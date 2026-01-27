@@ -41,7 +41,21 @@ def extract_text_from_pdf(path: str) -> str:
 
 def extract_text_from_docx(path: str) -> str:
     doc = Document(path)
-    return "\n".join(p.text for p in doc.paragraphs)
+    text_parts = []
+    
+    # Iterate through all elements in the document body (paragraphs + tables)
+    for element in doc.element.body:
+        if element.tag.endswith('p'):  # Paragraph
+            para = [p for p in doc.paragraphs if p._element == element][0]
+            text_parts.append(para.text)
+        elif element.tag.endswith('tbl'):  # Table
+            # Extract table content
+            table = [t for t in doc.tables if t._element == element][0]
+            for row in table.rows:
+                cells = [cell.text for cell in row.cells]
+                text_parts.append(" | ".join(cells))
+    
+    return "\n".join(text_parts)
 
 
 def parse_syllabus(file):

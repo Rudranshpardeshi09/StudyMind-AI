@@ -31,30 +31,30 @@
     --radius: 0.5rem
   }
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
+    --background: 15 20% 8%;
+    --foreground: 0 0% 95%;
+    --card: 15 25% 12%;
+    --card-foreground: 0 0% 95%;
+    --popover: 15 20% 8%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 270 80% 55%;
     --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
+    --secondary: 320 70% 45%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
+    --muted: 220 20% 22%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 40 90% 55%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%
+    --border: 220 20% 22%;
+    --input: 220 20% 22%;
+    --ring: 270 80% 55%;
+    --chart-1: 200 100% 50%;
+    --chart-2: 160 100% 45%;
+    --chart-3: 30 100% 55%;
+    --chart-4: 280 100% 60%;
+    --chart-5: 340 100% 55%
   }
 }
 
@@ -64,5 +64,39 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Responsive utilities for better mobile support */
+@layer utilities {
+  /* Ensure touch targets are minimum 44px for mobile */
+  @screen sm {
+    .touch-target {
+      @apply min-h-[44px] min-w-[44px];
+    }
+  }
+
+  /* Responsive scrollbar styling */
+  .scrollbar-thin::-webkit-scrollbar {
+    @apply w-1 sm:w-2;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-gray-100 dark:bg-gray-900;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-gray-400 dark:bg-gray-600 rounded hover:bg-gray-500 dark:hover:bg-gray-500;
+  }
+
+  /* Mobile-first text sizing helper */
+  .responsive-heading {
+    @apply text-lg sm:text-xl md:text-2xl;
+  }
+  
+  .responsive-text {
+    @apply text-xs sm:text-sm md:text-base;
+  }
+
+  .responsive-label {
+    @apply text-xs sm:text-sm font-semibold;
   }
 }

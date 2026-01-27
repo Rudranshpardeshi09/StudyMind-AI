@@ -57,21 +57,21 @@ export default function UploadPDF() {
       variants={cardVariants}
       initial="hidden"
       animate="visible"
-      className="h-full"
+      className="h-full w-full"
     >
       <Card className="h-full flex flex-col shadow-lg border-0 bg-gradient-to-br from-white to-blue-50 hover:shadow-xl transition-shadow">
-        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <span className="text-2xl">📄</span>
-            Upload PDF
+        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg p-3 sm:p-4">
+          <CardTitle className="text-sm sm:text-base font-semibold flex items-center gap-1 sm:gap-2">
+            <span className="text-xl sm:text-2xl">📄</span>
+            <span>Upload PDF</span>
           </CardTitle>
         </CardHeader>
 
-        <CardContent className="space-y-4 flex-1 flex flex-col p-5">
+        <CardContent className="space-y-3 sm:space-y-4 flex-1 flex flex-col p-3 sm:p-5">
           
           {/* FILE INPUT */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-700 block">
+            <label className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 block">
               Select PDF Document
             </label>
             <div className="relative">
@@ -85,14 +85,14 @@ export default function UploadPDF() {
               />
               <label
                 htmlFor="pdf-upload"
-                className={`block w-full px-4 py-3 rounded-lg border-2 border-dashed transition-all cursor-pointer text-center ${
+                className={`block w-full px-3 sm:px-4 py-2 sm:py-3 rounded-lg border-2 border-dashed transition-all cursor-pointer text-center ${
                   loading
                     ? "border-gray-300 bg-gray-50"
-                    : "border-blue-400 bg-blue-50 hover:border-blue-600 hover:bg-blue-100"
+                    : "border-blue-400 bg-blue-50 hover:border-blue-600 hover:bg-blue-100 dark:border-blue-600 dark:bg-blue-900 dark:hover:bg-blue-800"
                 }`}
               >
-                <span className="text-sm font-medium text-gray-700">
-                  {loading ? "Uploading..." : "Choose PDF or drag here"}
+                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {loading ? "Uploading..." : "Choose PDF or drag"}
                 </span>
               </label>
             </div>
@@ -105,7 +105,7 @@ export default function UploadPDF() {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="text-xs text-red-700 bg-red-100 border border-red-300 p-3 rounded-lg"
+                className="text-xs text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 p-2 sm:p-3 rounded-lg break-words"
               >
                 ⚠️ {error}
               </motion.div>
@@ -148,13 +148,13 @@ export default function UploadPDF() {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-lg p-4 space-y-2"
+                className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900 dark:to-emerald-900 border-2 border-green-300 dark:border-green-700 rounded-lg p-3 sm:p-4 space-y-2"
               >
-                <p className="text-sm font-bold text-green-700 flex items-center gap-2">
-                  <span className="text-xl">✓</span> PDF Indexed Successfully
+                <p className="text-xs sm:text-sm font-bold text-green-700 dark:text-green-400 flex items-center gap-2">
+                  <span className="text-lg sm:text-xl">✓</span> PDF Indexed Successfully
                 </p>
-                <div className="text-xs text-green-700 space-y-1">
-                  <p>📁 <strong>{uploadedFile.name}</strong></p>
+                <div className="text-xs text-green-700 dark:text-green-400 space-y-1 break-words">
+                  <p>📁 <strong className="break-all">{uploadedFile.name}</strong></p>
                   <p>📄 Pages: <strong>{uploadedFile.pages}</strong> | 🔗 Chunks: <strong>{uploadedFile.chunks}</strong></p>
                 </div>
               </motion.div>

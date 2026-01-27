@@ -72,7 +72,7 @@ export default function ChatWindow() {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="h-full flex flex-col bg-gradient-to-br from-white via-blue-50 to-indigo-50 rounded-xl border-0 shadow-xl overflow-hidden"
+      className="h-full flex flex-col bg-gradient-to-br from-white via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-purple-950 dark:to-slate-900 rounded-xl border-0 shadow-xl overflow-hidden"
     >
       
       {/* HEADER */}
@@ -80,28 +80,28 @@ export default function ChatWindow() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="flex-shrink-0 border-b border-blue-200 p-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white"
+        className="flex-shrink-0 border-b border-blue-200 dark:border-purple-700 p-3 sm:p-4 bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-purple-700 dark:via-purple-600 dark:to-cyan-600 text-white"
       >
-        <h2 className="font-bold text-lg flex items-center gap-2">
-          <span className="text-2xl">✨</span>
-          Study Assistant
+        <h2 className="font-bold text-sm sm:text-lg flex items-center gap-1 sm:gap-2">
+          <span className="text-xl sm:text-2xl">✨</span>
+          <span>Study Assistant</span>
         </h2>
         <AnimatePresence>
           {subject && (
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-sm text-blue-100 mt-1"
+              className="text-xs sm:text-sm text-blue-100 mt-1 truncate"
             >
-              {subject} • <strong>{unit}</strong> • {topic}
+              {subject} • <strong>{unit}</strong> • {topic.substring(0, 20)}{topic.length > 20 ? "..." : ""}
             </motion.p>
           )}
         </AnimatePresence>
       </motion.div>
 
       {/* MESSAGES SCROLL AREA */}
-      <ScrollArea className="flex-1 p-4 overflow-hidden" ref={scrollAreaRef}>
-        <div className="space-y-4 pr-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="space-y-3 sm:space-y-4 p-3 sm:p-4 pr-2 sm:pr-8">
           {messages.length === 0 && (
             <motion.div
               animate={{ opacity: [0.6, 1] }}
@@ -110,7 +110,7 @@ export default function ChatWindow() {
             >
               <div className="text-center">
                 <p className="text-2xl mb-2">🎓</p>
-                <p className="text-sm text-gray-600">
+                <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 px-4">
                   {!indexed
                     ? "Upload a PDF to get started"
                     : "Upload syllabus and select a topic to begin"}
@@ -144,14 +144,14 @@ export default function ChatWindow() {
           
           <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* INPUT AREA */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="flex-shrink-0 border-t border-blue-200 p-4 bg-gradient-to-r from-blue-50 to-indigo-50"
+        className="flex-shrink-0 border-t border-blue-200 dark:border-purple-700 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-slate-800"
       >
         <ChatInput 
           onSend={sendQuestion} 

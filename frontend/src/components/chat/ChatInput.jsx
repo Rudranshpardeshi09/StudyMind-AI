@@ -28,7 +28,7 @@ export default function ChatInput({ onSend, disabled }) {
   };
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-2 sm:gap-3">
       <motion.div
         className="flex-1"
         whileFocus={{ scale: 1.02 }}
@@ -39,7 +39,7 @@ export default function ChatInput({ onSend, disabled }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          className={`border-2 transition-all font-medium ${
+          className={`text-xs sm:text-sm border-2 transition-all font-medium ${
             disabled || isLoading
               ? "border-gray-300 bg-gray-50 opacity-50"
               : "border-blue-400 bg-white focus:border-blue-600 focus:ring-blue-500"
@@ -54,7 +54,7 @@ export default function ChatInput({ onSend, disabled }) {
         <Button
           disabled={disabled || !text.trim() || isLoading}
           onClick={handleSend}
-          className={`font-semibold transition-all ${
+          className={`font-semibold transition-all text-xs sm:text-sm py-2 h-auto ${
             disabled || !text.trim() || isLoading
               ? "opacity-50 cursor-not-allowed"
               : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-lg"

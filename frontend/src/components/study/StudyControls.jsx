@@ -73,6 +73,7 @@ const infoVariants = {
 
 export default function StudyControls() {
   const {
+    subject,
     syllabusData,
     unit,
     setUnit,
@@ -86,6 +87,12 @@ export default function StudyControls() {
   const selectedUnitData = units.find((u) => u.name === unit);
   const topics = selectedUnitData?.topics || [];
 
+  // Reset topic when unit changes
+  const handleUnitChange = (newUnit) => {
+    setUnit(newUnit);
+    setTopic("");
+  };
+
   if (!syllabusData || units.length === 0) {
     return (
       <motion.div
@@ -93,9 +100,9 @@ export default function StudyControls() {
         initial="hidden"
         animate="visible"
       >
-        <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-orange-50">
+        <Card className="shadow-lg border-0 bg-gradient-to-br from-white to-orange-50 dark:from-slate-800 dark:to-slate-900">
           <CardContent className="pt-6">
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-gray-600 dark:text-gray-400">
               📚 Upload syllabus to enable unit & topic selection
             </p>
           </CardContent>
@@ -117,15 +124,32 @@ export default function StudyControls() {
       animate="visible"
       className="h-full flex flex-col"
     >
-      <Card className="flex-1 shadow-lg border-0 bg-gradient-to-br from-white to-orange-50 hover:shadow-xl transition-shadow flex flex-col">
-        <CardHeader className="bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-t-lg">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <span className="text-2xl">🎯</span>
-            Study Options
+      <Card className="flex-1 shadow-lg border-0 bg-gradient-to-br from-white to-orange-50 dark:from-slate-800 dark:to-slate-900 hover:shadow-xl transition-shadow flex flex-col">
+        <CardHeader className="bg-gradient-to-r from-orange-600 to-red-600 dark:from-orange-700 dark:to-red-700 text-white rounded-t-lg p-3 sm:p-4">
+          <CardTitle className="text-sm sm:text-base font-semibold flex items-center gap-1 sm:gap-2">
+            <span className="text-xl sm:text-2xl">🎯</span>
+            <span>Study Options</span>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4 p-5 flex-1 flex flex-col">
+        <CardContent className="space-y-3 sm:space-y-4 p-3 sm:p-5 flex-1 flex flex-col">
           
+          {/* SUBJECT DISPLAY */}
+          {subject && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="space-y-2"
+            >
+              <label className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 block">
+                📌 Subject
+              </label>
+              <div className="px-3 py-2 sm:py-2.5 rounded-lg bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900 dark:to-red-900 border-2 border-orange-400 dark:border-orange-600 text-orange-900 dark:text-orange-300 font-semibold text-xs break-words">
+                {subject}
+              </div>
+            </motion.div>
+          )}
+
           {/* UNIT SELECTION */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -133,16 +157,16 @@ export default function StudyControls() {
             transition={{ delay: 0.1 }}
             className="space-y-2"
           >
-            <label className="text-sm font-semibold text-gray-700 block">
+            <label className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 block">
               📖 Select Unit
             </label>
-            <Select value={unit} onValueChange={setUnit}>
-              <SelectTrigger className="border-2 border-blue-300 bg-blue-50 focus:ring-2 focus:ring-blue-500">
+            <Select value={unit} onValueChange={handleUnitChange}>
+              <SelectTrigger className="text-xs sm:text-sm border-2 border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400">
                 <SelectValue placeholder="Choose a unit..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="dark:bg-slate-800 dark:text-white">
                 {units.map((u) => (
-                  <SelectItem key={u.name} value={u.name}>
+                  <SelectItem key={u.name} value={u.name} className="text-xs sm:text-sm">
                     {u.name}
                   </SelectItem>
                 ))}
@@ -157,7 +181,7 @@ export default function StudyControls() {
             transition={{ delay: 0.2 }}
             className="space-y-2"
           >
-            <label className="text-sm font-semibold text-gray-700 block">
+            <label className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 block">
               🔖 Select Topic
             </label>
             <Select
@@ -165,18 +189,18 @@ export default function StudyControls() {
               onValueChange={setTopic}
               disabled={!unit || topics.length === 0}
             >
-              <SelectTrigger className={`border-2 focus:ring-2 ${
+              <SelectTrigger className={`text-xs sm:text-sm border-2 focus:ring-2 ${
                 !unit || topics.length === 0
-                  ? "border-gray-300 bg-gray-50 opacity-50"
-                  : "border-indigo-300 bg-indigo-50 focus:ring-indigo-500"
+                  ? "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-slate-700 opacity-50"
+                  : "border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-slate-700 focus:ring-indigo-500 dark:focus:ring-indigo-400 dark:text-white"
               }`}>
                 <SelectValue placeholder="Select a topic..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="dark:bg-slate-800 dark:text-white">
                 {topics.map((t, i) => (
-                  <SelectItem key={i} value={t}>
-                    {t.substring(0, 60)}
-                    {t.length > 60 ? "..." : ""}
+                  <SelectItem key={i} value={t} className="text-xs sm:text-sm">
+                    {t.substring(0, 40)}
+                    {t.length > 40 ? "..." : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -190,23 +214,23 @@ export default function StudyControls() {
             transition={{ delay: 0.3 }}
             className="space-y-2"
           >
-            <label className="text-sm font-semibold text-gray-700 block">
+            <label className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 block">
               ⏱️ Answer Length
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
               {[3, 5, 12].map((m) => (
                 <motion.button
                   key={m}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setMarks(m)}
-                  className={`py-2 px-2 rounded-lg font-semibold text-xs transition-all ${
+                  className={`py-2 px-1 sm:px-2 rounded-lg font-semibold text-xs transition-all ${
                     marks === m
-                      ? `bg-gradient-to-r ${marksConfig[m].color} text-white shadow-lg`
-                      : "bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200"
+                      ? `bg-gradient-to-r ${marksConfig[m].color} text-white shadow-lg dark:shadow-lg`
+                      : "bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-slate-600"
                   }`}
                 >
-                  {marksConfig[m].icon} {m}
+                  <span className="hidden sm:inline">{marksConfig[m].icon} </span>{m}
                 </motion.button>
               ))}
             </div>
@@ -222,14 +246,14 @@ export default function StudyControls() {
                 exit="exit"
                 className="flex-1 flex items-end"
               >
-                <div className="w-full bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300 p-3 rounded-lg space-y-1">
-                  <p className="text-xs font-bold text-amber-900">
+                <div className="w-full bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-amber-950 dark:to-yellow-900 border-2 border-yellow-300 dark:border-yellow-600 p-2 sm:p-3 rounded-lg space-y-1">
+                  <p className="text-xs font-bold text-amber-900 dark:text-amber-300">
                     📊 Unit Information
                   </p>
-                  <p className="text-xs text-amber-800">
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
                     <strong>{unit}</strong> • {topics.length} topics
                   </p>
-                  <p className="text-xs text-amber-800">
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
                     Format: <strong className="capitalize">{selectedUnitData.format}</strong>
                   </p>
                 </div>
@@ -241,3 +265,4 @@ export default function StudyControls() {
     </motion.div>
   );
 }
+         
