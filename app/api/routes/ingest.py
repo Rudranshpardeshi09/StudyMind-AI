@@ -25,9 +25,16 @@ async def ingest(file: UploadFile = File(...)):
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    # Validate file type
+    # Validate file type and size
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+    
+    # Check file size (max 50MB)
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    file_size = len(await file.read())
+    await file.seek(0)  # Reset file pointer
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 50MB")
 
     try:
         result = ingest_pdf(file)
