@@ -219,7 +219,7 @@ export default function StudyControls() {
               <label className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 block">
                 ⏱️ Answer Length
               </label>
-              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+              <div className="grid grid-cols-3 gap-1 sm:gap-2">
                 {[3, 5, 12].map((m) => (
                   <motion.button
                     key={m}

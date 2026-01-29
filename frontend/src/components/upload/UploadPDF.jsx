@@ -79,7 +79,7 @@ export default function UploadPDF() {
             <div className="relative">
               <input
                 type="file"
-                accept="application/pdf"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={handleUpload}
                 disabled={loading}
                 className="hidden"
