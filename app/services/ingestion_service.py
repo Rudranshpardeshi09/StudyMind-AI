@@ -1,12 +1,13 @@
 import tempfile
 import logging
-import os
+import os, shutil
 from langchain_community.document_loaders import PyPDFLoader
 from app.rag.chunking import chunk_documents
 from app.vectorstore.faiss_store import save_vectorstore
 
 logger = logging.getLogger(__name__)
-
+UPLOAD_DIR = "app/data/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 def ingest_pdf(uploaded_file):
     """
@@ -24,16 +25,16 @@ def ingest_pdf(uploaded_file):
         "pages": <number of pages>
     }
     """
-    pdf_path = None
+    filename = uploaded_file.filename
+    persistent_path = os.path.join(UPLOAD_DIR, filename)
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            content = uploaded_file.file.read()
-            tmp.write(content)
-            pdf_path = tmp.name
+        # ✅ SAVE PDF PERMANENTLY (required for delete/reset)
+        with open(persistent_path, "wb") as f:
+            shutil.copyfileobj(uploaded_file.file, f)
 
         # Load documents with page information
         logger.info(f"Loading PDF: {uploaded_file.filename}")
-        loader = PyPDFLoader(pdf_path)
+        loader = PyPDFLoader(persistent_path)
         documents = loader.load()
 
         if not documents:
@@ -60,10 +61,34 @@ def ingest_pdf(uploaded_file):
     except Exception as e:
         logger.error(f"Error processing PDF {uploaded_file.filename}: {str(e)}")
         raise Exception(f"Error processing PDF: {str(e)}")
-    finally:
-        # Clean up temporary file
-        if pdf_path and os.path.exists(pdf_path):
-            try:
-                os.remove(pdf_path)
-            except Exception as e:
-                logger.warning(f"Failed to delete temp file {pdf_path}: {str(e)}")
+    # finally:
+    #     # Clean up temporary file
+    #     if persistent_path and os.path.exists(persistent_path):
+    #         try:
+    #             os.remove(persistent_path)
+    #         except Exception as e:
+    #             logger.warning(f"Failed to delete temp file {persistent_path}: {str(e)}")
+
+def rebuild_vectorstore_from_uploads():
+    from app.vectorstore.faiss_store import save_vectorstore
+    from app.rag.chunking import chunk_documents
+    from app.core.config import settings
+
+    documents = []
+
+    uploads_dir = "app/data/uploads"
+    if not os.path.exists(uploads_dir):
+        return
+
+    for filename in os.listdir(uploads_dir):
+        if filename.endswith(".pdf"):
+            loader = PyPDFLoader(os.path.join(uploads_dir, filename))
+            documents.extend(loader.load())
+
+    if not documents:
+        if os.path.exists(settings.VECTOR_DB_PATH):
+            shutil.rmtree(settings.VECTOR_DB_PATH)
+        return
+
+    chunks = chunk_documents(documents)
+    save_vectorstore(chunks)

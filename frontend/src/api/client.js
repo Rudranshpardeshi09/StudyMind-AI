@@ -91,3 +91,8 @@ export const askQuestion = (question, subject, unit, topic, marks) => {
   });
 };
 
+export const deletePDF = (filename) =>
+  api.delete(`/ingest/delete/${filename}`);
+
+export const resetPDFs = () =>
+  api.delete("/ingest/reset");

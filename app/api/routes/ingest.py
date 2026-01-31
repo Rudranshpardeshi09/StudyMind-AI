@@ -1,9 +1,13 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi import BackgroundTasks
-
+from app.core.config import settings
+import os, shutil
 from app.services.ingestion_service import ingest_pdf
+from urllib.parse import unquote
 
 router = APIRouter(prefix="/ingest", tags=["Document Ingestion"])
+UPLOAD_DIR = "app/data/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 INGESTION_STATUS = {
     "status": "idle",      # idle | processing | completed | failed
@@ -20,7 +24,7 @@ def ingest_background(file: UploadFile):
         result = ingest_pdf(file)
 
         INGESTION_STATUS["status"] = "completed"
-        INGESTION_STATUS["pages"] = result.get("pages", 0)
+        INGESTION_STATUS["pages"] = result.get("pages",0)
         INGESTION_STATUS["chunks"] = result.get("chunks", 0)
 
     except Exception as e:
@@ -83,3 +87,54 @@ async def ingest(background_tasks: BackgroundTasks, file: UploadFile = File(...)
 @router.get("/status")
 async def ingest_status():
     return INGESTION_STATUS
+
+@router.delete("/delete/{filename}")
+async def delete_pdf(filename: str):
+    # 🔑 Decode URL-encoded filename
+    decoded_filename = unquote(filename)
+
+    print("Decoded filename:", decoded_filename)
+
+    uploads_dir = os.path.abspath("app/data/uploads")
+    pdf_path = os.path.join(uploads_dir, decoded_filename)
+
+    print("Resolved path:", pdf_path)
+    print("Exists?", os.path.exists(pdf_path))
+
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    os.remove(pdf_path)
+
+    from app.services.ingestion_service import rebuild_vectorstore_from_uploads
+    rebuild_vectorstore_from_uploads()
+
+    return {
+        "status": "deleted",
+        "filename": filename
+    }
+
+
+@router.delete("/reset")
+async def reset_all_pdfs():
+    if os.path.exists(UPLOAD_DIR):
+        shutil.rmtree(UPLOAD_DIR)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+    from app.core.config import settings
+    if os.path.exists(settings.VECTOR_DB_PATH):
+        shutil.rmtree(settings.VECTOR_DB_PATH)
+
+    # Reset status safely
+    INGESTION_STATUS.update({
+        "status": "idle",
+        "pages": 0,
+        "chunks": 0,
+        "error": None,
+    })
+
+    return {
+        "status": "reset",
+        "message": "All PDFs and embeddings deleted"
+    }
+

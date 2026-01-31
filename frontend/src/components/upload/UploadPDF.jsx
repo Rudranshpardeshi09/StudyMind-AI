@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { uploadPDF } from "@/api/client";
 import { useApp } from "@/context/AppContext";
 import { getIngestStatus } from "@/api/client";
+import { deletePDF, resetPDFs } from "@/api/client";
 
 
 const cardVariants = {
@@ -27,7 +28,8 @@ export default function UploadPDF() {
   const { setIndexed } = useApp();
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+
   const [error, setError] = useState(null);
 
   const handleUpload = async (e) => {
@@ -40,7 +42,11 @@ export default function UploadPDF() {
 
     try {
       await uploadPDF(file, setProgress);
-
+      // Track file in list (UI only)
+      setUploadedFiles((prev) => [
+        ...prev,
+        { name: file.name, status: "processing" }
+      ]);
       // 🔄 Start polling ingestion status
       pollIngestionStatus(file.name);
 
@@ -58,21 +64,24 @@ export default function UploadPDF() {
         const res = await getIngestStatus();
 
         if (res.data.status === "completed") {
-          setUploadedFile({
-            name: filename,
-            pages: res.data.pages,
-            chunks: res.data.chunks,
-          });
+          setUploadedFiles((prev) =>
+            prev.map((f) =>
+              f.name === filename
+                ? { ...f, status: "completed", pages: res.data.pages, chunks: res.data.chunks }
+                : f
+            )
+          );
+
 
           setIndexed(true);
           setLoading(false);
-          clearInterval(interval);   
+          clearInterval(interval);
         }
 
         if (res.data.status === "failed") {
           setError(res.data.error || "PDF ingestion failed");
           setLoading(false);
-          clearInterval(interval);  
+          clearInterval(interval);
         }
       } catch (e) {
         console.error("Status check failed", e);
@@ -81,6 +90,33 @@ export default function UploadPDF() {
     }, 2000);
   };
 
+  const removePDF = async (filename) => {
+    try {
+      await deletePDF(filename);
+
+      setUploadedFiles((prev) => prev.filter((f) => f.name !== filename));
+
+      // If the active chat PDF was deleted
+      if (uploadedFiles?.some(f => f.name === filename)) {
+        setUploadedFiles(prev => prev.filter(f => f.name !== filename));
+        if (uploadedFiles.length === 1) {
+          setIndexed(false);
+        }
+      }
+    } catch (err) {
+      setError("Failed to delete PDF");
+    }
+  };
+
+  const resetAll = async () => {
+    try {
+      await resetPDFs();
+      setUploadedFiles([]);
+      setIndexed(false);
+    } catch (err) {
+      setError("Failed to reset PDFs");
+    }
+  };
 
 
   return (
@@ -174,7 +210,7 @@ export default function UploadPDF() {
 
           {/* SUCCESS STATE */}
           <AnimatePresence>
-            {uploadedFile && !loading && (
+            {uploadedFiles && !loading && (
               <motion.div
                 variants={successVariants}
                 initial="initial"
@@ -186,15 +222,50 @@ export default function UploadPDF() {
                   <span className="text-lg sm:text-xl">✓</span> PDF Indexed Successfully
                 </p>
                 <div className="text-xs text-green-700 dark:text-green-400 space-y-1 break-words">
-                  <p>📁 <strong className="break-all">{uploadedFile.name}</strong></p>
-                  <p>📄 Pages: <strong>{uploadedFile.pages}</strong> | 🔗 Chunks: <strong>{uploadedFile.chunks}</strong></p>
+                  <p>📁 <strong className="break-all">{uploadedFiles.name}</strong></p>
+                  <p>📄 Pages: <strong>{uploadedFiles.pages}</strong></p>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
+          {/* MULTI PDF LIST */}
+          {uploadedFiles.length > 0 && (
+            <div className="space-y-2 text-xs">
+              <p className="font-semibold text-gray-700 dark:text-gray-300">
+                Uploaded PDFs
+              </p>
+
+              {uploadedFiles.map((f) => (
+                <div
+                  key={f.name}
+                  className="flex justify-between items-center bg-gray-100 dark:bg-slate-800 p-2 rounded"
+                >
+                  <span className="truncate">{f.name}</span>
+
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => removePDF(f.name)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              ))}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={resetAll}
+                className="w-full"
+              >
+                Reset All PDFs
+              </Button>
+            </div>
+          )}
+
           {/* INFO */}
-          {!uploadedFile && !loading && (
+          {!uploadedFiles && !loading && (
             <motion.p
               className="text-xs text-gray-600 flex-1 flex items-end"
               animate={{ opacity: [0.7, 1] }}
