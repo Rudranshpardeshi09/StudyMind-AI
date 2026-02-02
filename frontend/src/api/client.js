@@ -28,8 +28,8 @@ api.interceptors.response.use(
   }
 );
 
-export const getIngestStatus = () =>
-  api.get("/ingest/status");
+export const getIngestStatus = (filename) =>
+  api.get("/ingest/status", { params: filename ? { filename } : {} });
 
 /**
  * Upload a PDF document for indexing

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,6 @@ import { uploadPDF } from "@/api/client";
 import { useApp } from "@/context/AppContext";
 import { getIngestStatus } from "@/api/client";
 import { deletePDF, resetPDFs } from "@/api/client";
-
 
 const cardVariants = {
   hidden: { opacity: 0, scale: 0.95 },
@@ -19,105 +18,159 @@ const successVariants = {
     scale: 1,
     rotate: 0,
     opacity: 1,
-    transition: { type: "spring", stiffness: 100, damping: 15 }
+    transition: { type: "spring", stiffness: 100, damping: 15 },
   },
   exit: { scale: 0, opacity: 0 },
 };
 
 export default function UploadPDF() {
   const { setIndexed } = useApp();
-  const [progress, setProgress] = useState(0);
+
   const [loading, setLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState([]);
-
+  const pollingRefs = useRef({});
   const [error, setError] = useState(null);
+
+  /* ================= UPLOAD ================= */
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setLoading(true);
     setError(null);
-    setProgress(0);
+    setLoading(true);
+
+    setUploadedFiles((prev) => [
+      ...prev,
+      { name: file.name, progress: 0, status: "uploading" },
+    ]);
 
     try {
-      await uploadPDF(file, setProgress);
-      // Track file in list (UI only)
-      setUploadedFiles((prev) => [
-        ...prev,
-        { name: file.name, status: "processing" }
-      ]);
-      // 🔄 Start polling ingestion status
-      pollIngestionStatus(file.name);
+      await uploadPDF(file, (p) => {
+        setUploadedFiles((prev) =>
+          prev.map((f) =>
+            f.name === file.name ? { ...f, progress: p } : f
+          )
+        );
+      });
 
-    } catch (err) {
-      setError(err.response?.data?.detail || "Failed to upload PDF");
-      console.error("Upload error:", err);
+      pollIngestionStatus(file.name);
+    } catch {
+      setUploadedFiles((prev) =>
+        prev.map((f) =>
+          f.name === file.name ? { ...f, status: "failed" } : f
+        )
+      );
       setLoading(false);
     }
   };
 
+  /* ================= POLLING ================= */
 
   const pollIngestionStatus = (filename) => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await getIngestStatus();
+    if (pollingRefs.current[filename]) return;
 
-        if (res.data.status === "completed") {
-          setUploadedFiles((prev) =>
-            prev.map((f) =>
-              f.name === filename
-                ? { ...f, status: "completed", pages: res.data.pages, chunks: res.data.chunks }
-                : f
-            )
+    const intervalId = setInterval(async () => {
+      try {
+        const res = await getIngestStatus(filename);
+
+        if (!res.data || res.data.status === "not_found") {
+          clearInterval(intervalId);
+          delete pollingRefs.current[filename];
+          return;
+        }
+
+        setUploadedFiles((prev) => {
+          const updated = prev.map((f) =>
+            f.name === filename
+              ? {
+                  ...f,
+                  status: res.data.status,
+                  pages: res.data.pages,
+                  chunks: res.data.chunks,
+                  progress:
+                    res.data.status === "completed" ? 100 : f.progress,
+                }
+              : f
           );
 
+          // enable chat if ANY completed
+          setIndexed(updated.some((f) => f.status === "completed"));
 
-          setIndexed(true);
-          setLoading(false);
-          clearInterval(interval);
-        }
+          // auto-unlock upload UI
+          const stillBusy = updated.some(
+            (f) =>
+              f.status === "uploading" || f.status === "processing"
+          );
+          setLoading(stillBusy);
 
-        if (res.data.status === "failed") {
-          setError(res.data.error || "PDF ingestion failed");
-          setLoading(false);
-          clearInterval(interval);
+          return updated;
+        });
+
+        if (
+          res.data.status === "completed" ||
+          res.data.status === "failed"
+        ) {
+          clearInterval(intervalId);
+          delete pollingRefs.current[filename];
         }
-      } catch (e) {
-        console.error("Status check failed", e);
-        clearInterval(interval);     // ✅ FAIL SAFE
+      } catch (err) {
+        clearInterval(intervalId);
+        delete pollingRefs.current[filename];
+        setLoading(false);
       }
     }, 2000);
+
+    pollingRefs.current[filename] = intervalId;
   };
+
+  /* ================= DELETE ================= */
 
   const removePDF = async (filename) => {
     try {
       await deletePDF(filename);
 
-      setUploadedFiles((prev) => prev.filter((f) => f.name !== filename));
-
-      // If the active chat PDF was deleted
-      if (uploadedFiles?.some(f => f.name === filename)) {
-        setUploadedFiles(prev => prev.filter(f => f.name !== filename));
-        if (uploadedFiles.length === 1) {
-          setIndexed(false);
-        }
+      if (pollingRefs.current[filename]) {
+        clearInterval(pollingRefs.current[filename]);
+        delete pollingRefs.current[filename];
       }
-    } catch (err) {
+
+      setUploadedFiles((prev) => {
+        const next = prev.filter((f) => f.name !== filename);
+        setIndexed(next.some((f) => f.status === "completed"));
+        return next;
+      });
+
+      setLoading(false);
+    } catch {
       setError("Failed to delete PDF");
+      setLoading(false);
     }
   };
+
+  /* ================= RESET ================= */
 
   const resetAll = async () => {
     try {
       await resetPDFs();
+
+      Object.values(pollingRefs.current).forEach(clearInterval);
+      pollingRefs.current = {};
+
       setUploadedFiles([]);
       setIndexed(false);
-    } catch (err) {
+      setLoading(false);
+    } catch {
       setError("Failed to reset PDFs");
+      setLoading(false);
     }
   };
 
+  /* ================= RENDER ================= */
+
+  const completedFiles = uploadedFiles.filter(
+    (f) => f.status === "completed"
+  );
 
   return (
     <motion.div
@@ -180,7 +233,7 @@ export default function UploadPDF() {
             )}
           </AnimatePresence>
 
-          {/* LOADING PROGRESS */}
+          {/* LOADING PROGRESS
           <AnimatePresence>
             {loading && (
               <motion.div
@@ -206,11 +259,11 @@ export default function UploadPDF() {
                 </motion.p>
               </motion.div>
             )}
-          </AnimatePresence>
+          </AnimatePresence> */}
 
           {/* SUCCESS STATE */}
-          <AnimatePresence>
-            {uploadedFiles && !loading && (
+          {/* <AnimatePresence>
+            {completedFiles.length > 0 && (
               <motion.div
                 variants={successVariants}
                 initial="initial"
@@ -222,12 +275,14 @@ export default function UploadPDF() {
                   <span className="text-lg sm:text-xl">✓</span> PDF Indexed Successfully
                 </p>
                 <div className="text-xs text-green-700 dark:text-green-400 space-y-1 break-words">
-                  <p>📁 <strong className="break-all">{uploadedFiles.name}</strong></p>
-                  <p>📄 Pages: <strong>{uploadedFiles.pages}</strong></p>
+                  {completedFiles.map((f) => (
+                    <p>📁 <strong className="break-all">{f.name}</strong>
+                      📄 Pages: <strong>{f.pages}</strong></p>
+                  ))}
                 </div>
               </motion.div>
             )}
-          </AnimatePresence>
+          </AnimatePresence> */}
 
           {/* MULTI PDF LIST */}
           {uploadedFiles.length > 0 && (
@@ -239,33 +294,64 @@ export default function UploadPDF() {
               {uploadedFiles.map((f) => (
                 <div
                   key={f.name}
-                  className="flex justify-between items-center bg-gray-100 dark:bg-slate-800 p-2 rounded"
+                  className="bg-gray-100 dark:bg-slate-800 p-3 rounded space-y-1"
                 >
-                  <span className="truncate">{f.name}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="truncate text-xs font-medium">{f.name}</span>
 
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => removePDF(f.name)}
-                  >
-                    Delete
-                  </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => removePDF(f.name)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+
+                  {/* STATUS */}
+                  <p className="text-[11px] text-gray-600">
+                    Status: <strong>{f.status || "Processing"}</strong>
+                  </p>
+
+                  {/* PROGRESS BAR */}
+                  {typeof f.progress === "number" && (
+                    <div className="h-2 bg-gray-300 rounded overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${f.status === "completed"
+                            ? "bg-green-500"
+                            : f.status === "failed"
+                              ? "bg-red-500"
+                              : "bg-blue-500"
+                          }`}
+                        style={{ width: `${f.progress}%` }}
+                      />
+                    </div>
+                  )}
+
+                  {/* METADATA */}
+                  {f.status === "completed" && (
+                    <p className="text-[11px] text-green-700">
+                      📄 Pages: {f.pages} | 🔗 Chunks: {f.chunks}
+                    </p>
+                  )}
                 </div>
               ))}
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={resetAll}
-                className="w-full"
-              >
-                Reset All PDFs
-              </Button>
+              {uploadedFiles.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={resetAll}
+                  className="w-full"
+                >
+                  Reset All PDFs
+                </Button>
+              )}
             </div>
           )}
 
           {/* INFO */}
-          {!uploadedFiles && !loading && (
+          {!loading && uploadedFiles.length === 0 && (
             <motion.p
               className="text-xs text-gray-600 flex-1 flex items-end"
               animate={{ opacity: [0.7, 1] }}
