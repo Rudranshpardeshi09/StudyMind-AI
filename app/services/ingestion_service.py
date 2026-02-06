@@ -41,8 +41,25 @@ def ingest_pdf(input_source):
         logger.info(f"Loading PDF: {filename}")
 
         # 🔹 LOAD PDF
-        loader = PyPDFLoader(persistent_path)
-        documents = loader.load()
+        if persistent_path.lower().endswith(".pdf"):
+            loader = PyPDFLoader(persistent_path)
+            documents = loader.load()
+        elif persistent_path.lower().endswith(".docx"):
+            from docx import Document as DocxDocument
+            from langchain_core.documents import Document
+            
+            doc = DocxDocument(persistent_path)
+            full_text = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    full_text.append(para.text)
+            
+            # Create a single document for the whole DOCX (or split by paragraphs if preferred)
+            # For consistency with PDF loader which yields pages, we can just treat the whole doc as one "page"
+            # or try to split it. A single doc is fine for the chunker.
+            documents = [Document(page_content="\n".join(full_text), metadata={"source": persistent_path})]
+        else:
+            raise ValueError("Unsupported file format")
 
         if not documents:
             raise ValueError("PDF file is empty or unreadable")
@@ -99,7 +116,7 @@ def rebuild_vectorstore_from_uploads():
     # Collect all PDF files
     pdf_files = [
         f for f in os.listdir(uploads_dir)
-        if f.lower().endswith(".pdf")
+        if f.lower().endswith(".pdf") or f.lower().endswith(".docx")
     ]
 
     # If no PDFs exist → wipe vector DB and exit
@@ -113,9 +130,19 @@ def rebuild_vectorstore_from_uploads():
 
     # Load ALL remaining PDFs
     for filename in pdf_files:
+        # try:
         try:
-            loader = PyPDFLoader(os.path.join(uploads_dir, filename))
-            documents.extend(loader.load())
+            if filename.lower().endswith(".pdf"):
+                loader = PyPDFLoader(os.path.join(uploads_dir, filename))
+                documents.extend(loader.load())
+            elif filename.lower().endswith(".docx"):
+                 # Simplified DOCX loading for rebuild
+                from docx import Document as DocxDocument
+                from langchain_core.documents import Document
+                path = os.path.join(uploads_dir, filename)
+                doc = DocxDocument(path)
+                text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+                documents.append(Document(page_content=text, metadata={"source": path}))
             logger.info(f"Loaded {filename} for rebuild")
         except Exception as e:
             logger.warning(f"Failed to load {filename}: {e}")

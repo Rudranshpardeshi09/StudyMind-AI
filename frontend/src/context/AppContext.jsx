@@ -10,6 +10,11 @@ export const AppProvider = ({ children }) => {
   const [messages, setMessages] = useState([]);
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // PERSISTENT UPLOAD STATE
+  // ═══════════════════════════════════════════════════════════════════════════
+  // const [uploadedFiles, setUploadedFiles] = useState([]);
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // STUDY OPTIONS STATE (Simplified)
   // ═══════════════════════════════════════════════════════════════════════════
   const [syllabusText, setSyllabusText] = useState("");  // User-entered syllabus/topics text
@@ -34,6 +39,8 @@ export const AppProvider = ({ children }) => {
     messages,
     setMessages,
     clearMessages,
+    // uploadedFiles,
+    // setUploadedFiles,
 
     // Study options (simplified)
     syllabusText,

@@ -1,4 +1,4 @@
-fastapi
+cd  fastapi
 uvicorn
 python-dotenv
 python-multipart
@@ -17,3 +17,8 @@ python-multipart
 sentence-transformers
 
 
+python-docx
+pdfplumber
+langchain-community
+langchain-huggingface
+google-generativeai

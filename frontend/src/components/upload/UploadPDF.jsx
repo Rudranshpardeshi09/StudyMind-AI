@@ -39,13 +39,12 @@ const FileItem = memo(({ file, onDelete }) => (
     {typeof file.progress === "number" && (
       <div className="h-2 bg-gray-300 dark:bg-neutral-700 rounded overflow-hidden">
         <div
-          className={`h-full transition-all duration-500 ease-out ${
-            file.status === "completed"
-              ? "bg-green-500 dark:bg-neon-500"
-              : file.status === "failed"
+          className={`h-full transition-all duration-500 ease-out ${file.status === "completed"
+            ? "bg-green-500 dark:bg-neon-500"
+            : file.status === "failed"
               ? "bg-red-500"
               : "bg-blue-500 dark:bg-neon-600"
-          }`}
+            }`}
           style={{ width: `${file.progress}%` }}
         />
       </div>
@@ -66,9 +65,9 @@ export default function UploadPDF() {
   const { setIndexed } = useApp();
 
   const [loading, setLoading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploadedFiles, setUploadedFiles] = useState([]); // Moved to AppContext
   const [error, setError] = useState(null);
-  
+
   const pollingRefs = useRef({});
   const isMountedRef = useRef(true);
 
@@ -91,7 +90,7 @@ export default function UploadPDF() {
 
     // Sync Loading State: If any file is uploading/processing, we are "Loading"
     const isBusy = uploadedFiles.some(
-        (f) => f.status === "uploading" || f.status === "processing" || f.status === "pending"
+      (f) => f.status === "uploading" || f.status === "processing" || f.status === "pending"
     );
     setLoading(isBusy);
 
@@ -122,16 +121,16 @@ export default function UploadPDF() {
 
         // ✅ FIXED: Only update local state here. 
         // The useEffect above handles setIndexed and setLoading automatically.
-        setUploadedFiles((prev) => 
+        setUploadedFiles((prev) =>
           prev.map((f) =>
             f.name === filename
               ? {
-                  ...f,
-                  status: res.data.status,
-                  pages: res.data.pages,
-                  chunks: res.data.chunks,
-                  progress: res.data.status === "completed" ? 100 : f.progress,
-                }
+                ...f,
+                status: res.data.status,
+                pages: res.data.pages,
+                chunks: res.data.chunks,
+                progress: res.data.status === "completed" ? 100 : f.progress,
+              }
               : f
           )
         );
@@ -158,7 +157,7 @@ export default function UploadPDF() {
     e.target.value = "";
     setError(null);
     // Note: setLoading(true) is handled automatically by the useEffect when we add the file below
-    
+
     setUploadedFiles((prev) => [
       ...prev,
       { name: file.name, progress: 0, status: "uploading" },
@@ -231,7 +230,7 @@ export default function UploadPDF() {
   // ══════════════════════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════════
-  
+
   return (
     <motion.div
       variants={cardVariants}

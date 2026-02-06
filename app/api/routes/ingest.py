@@ -220,8 +220,8 @@ def ingest_background(file_path: str, filename: str):
 
 @router.post("/")
 async def ingest(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    if not file or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files allowed")
+    if not file or not (file.filename.lower().endswith(".pdf") or file.filename.lower().endswith(".docx")):
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files allowed")
 
     file_path = os.path.join(UPLOAD_DIR, file.filename)
 
