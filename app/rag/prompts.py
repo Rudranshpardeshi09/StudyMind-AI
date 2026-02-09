@@ -5,7 +5,8 @@ RAG_PROMPT = PromptTemplate(
         "syllabus_context",
         "context",
         "question",
-        "marks"
+        "marks",
+        "chat_history"
     ],
     template="""You are an expert academic tutor specializing in exam preparation and concept clarity.
 
@@ -18,6 +19,7 @@ CRITICAL GUIDELINES:
 ✓ CLARITY: Explain concepts clearly, as if to a student preparing for exams
 ✓ STRUCTURE: Use the format specified by marks without exception
 ✓ SYLLABUS FOCUS: If syllabus/topics are provided, prioritize information relevant to them
+✓ CONVERSATION MEMORY: Use the chat history to understand context and follow-up questions
 
 IF information is absent: State clearly "This specific aspect is not covered in the provided material."
 DO NOT: Refuse to answer or say "I cannot help" if the material contains relevant information.
@@ -56,6 +58,11 @@ SYLLABUS / STUDY CONTEXT (User Provided):
 ═══════════════════════════════════════════════════════════════════════════════
 MARKS REQUIRED: {marks}
 ═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+CONVERSATION HISTORY (Previous messages for context):
+═══════════════════════════════════════════════════════════════════════════════
+{chat_history}
 
 ═══════════════════════════════════════════════════════════════════════════════
 RELEVANT CONTENT FROM UPLOADED PDFs:

@@ -46,27 +46,23 @@ def rank_documents(docs: list, question: str) -> list:
     return [doc for doc, _ in scored_docs]
 
 
-def run_rag(question: str, vectorstore, syllabus_context: str = "", marks: int = 3):
+def run_rag(question: str, vectorstore, syllabus_context: str = "", marks: int = 3, chat_history: list = None):
     """
-    Production-ready RAG pipeline:
+    Production-ready RAG pipeline with conversation memory:
     
     1. Retrieve diverse, relevant documents using MMR
     2. Rank them by semantic relevance to the question
     3. Build rich context from top documents
-    4. Generate answer with proper formatting
-    5. Extract and return metadata
-    
-    This pipeline ensures:
-    - Questions are answered from ALL uploaded PDF content
-    - Syllabus context guides the answer focus
-    - Context is comprehensive and relevant
-    - Proper error handling and fallbacks
+    4. Include conversation history for follow-up questions
+    5. Generate answer with proper formatting
+    6. Extract and return metadata
     
     Args:
         question: The user's question
         vectorstore: FAISS vectorstore with all PDF embeddings
         syllabus_context: User-provided syllabus/topics text
         marks: Answer length (3=short, 5=medium, 12=long)
+        chat_history: List of previous messages [{"role": "user/assistant", "content": "..."}]
     """
     retriever = get_retriever(vectorstore)
 
@@ -130,6 +126,21 @@ def run_rag(question: str, vectorstore, syllabus_context: str = "", marks: int =
     context = "\n\n" + "─" * 70 + "\n\n".join(context_parts)
 
     # ════════════════════════════════════════════════════════════════
+    # STEP 3.5: FORMAT CHAT HISTORY - Include conversation context
+    # ════════════════════════════════════════════════════════════════
+    formatted_chat_history = "No previous conversation."
+    if chat_history and len(chat_history) > 0:
+        # Limit to last 15 messages to maintain conversation context
+        recent_history = chat_history[-15:]
+        history_parts = []
+        for msg in recent_history:
+            role = "Student" if msg["role"] == "user" else "Tutor"
+            # Truncate long messages to save context space
+            content = msg["content"][:500] + "..." if len(msg["content"]) > 500 else msg["content"]
+            history_parts.append(f"{role}: {content}")
+        formatted_chat_history = "\n".join(history_parts)
+
+    # ════════════════════════════════════════════════════════════════
     # STEP 4: GENERATE - Create prompt and call LLM
     # ════════════════════════════════════════════════════════════════
     # Format syllabus context for prompt
@@ -139,7 +150,8 @@ def run_rag(question: str, vectorstore, syllabus_context: str = "", marks: int =
         syllabus_context=formatted_syllabus,
         marks=marks,
         context=context,
-        question=question
+        question=question,
+        chat_history=formatted_chat_history
     )
 
     try:

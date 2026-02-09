@@ -69,9 +69,10 @@ export const uploadSyllabus = (file) => {
  * @param {string} question - The question to ask
  * @param {string} syllabusContext - User's syllabus/topics text (optional)
  * @param {number} marks - Answer length: 3=short, 5=medium, 12=long
+ * @param {Array} chatHistory - Previous messages for context [{role, content}]
  * @returns {Promise} Response with answer, pages, sources
  */
-export const askQuestion = (question, syllabusContext = "", marks = 3) => {
+export const askQuestion = (question, syllabusContext = "", marks = 3, chatHistory = []) => {
   // Input validation
   if (!question || typeof question !== "string" || question.trim().length === 0) {
     return Promise.reject(new Error("Question must be a non-empty string"));
@@ -79,11 +80,20 @@ export const askQuestion = (question, syllabusContext = "", marks = 3) => {
   if (typeof marks !== "number" || marks < 1) {
     return Promise.reject(new Error("Marks must be a positive number"));
   }
-  
+
+  // Format chat history - only include user and assistant messages
+  const formattedHistory = chatHistory
+    .filter(msg => msg.role === "user" || msg.role === "assistant")
+    .map(msg => ({
+      role: msg.role,
+      content: msg.content
+    }));
+
   return api.post("/qa/ask", {
     question: question.trim(),
     syllabus_context: syllabusContext || null,
     marks,
+    chat_history: formattedHistory.length > 0 ? formattedHistory : null,
   });
 };
 

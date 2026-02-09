@@ -63,11 +63,17 @@ async def ask_question(request: QARequest):
         # ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
         # RUN RAG PIPELINE
         # ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+        # Convert chat history to list of dicts for the RAG service
+        chat_history = None
+        if request.chat_history:
+            chat_history = [{"role": msg.role, "content": msg.content} for msg in request.chat_history]
+        
         result = run_rag(
             question=request.question.strip(),
             vectorstore=vectorstore,
             syllabus_context=request.syllabus_context or "",
-            marks=request.marks or 3
+            marks=request.marks or 3,
+            chat_history=chat_history
         )
         
         # Check if there was an error in the result

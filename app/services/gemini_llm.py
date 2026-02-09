@@ -29,7 +29,7 @@ def get_working_model():
         raise
 
 
-def generate_text(prompt: str, temperature: float = 0.7, max_tokens: int = 2000) -> str:
+def generate_text(prompt: str, temperature: float = 0.7, max_tokens: int = 4096) -> str:
     """
     Generate text using Gemini API with safety considerations.
     

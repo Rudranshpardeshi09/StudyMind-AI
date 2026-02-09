@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { askQuestion } from "@/api/client";
 import { useApp } from "@/context/AppContext";
+import { Sparkles, BookOpen, FileText, MessageSquare } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import SourcesPanel from "./SourcesPanel";
 import ChatInput from "./ChatInput";
@@ -41,8 +42,8 @@ export default function ChatWindow() {
     setMessages((m) => [...m, { role: "user", content: q }]);
 
     try {
-      // Send question with syllabus context (can be empty) and marks
-      const res = await askQuestion(q, syllabusText, marks);
+      // Send question with syllabus context, marks, and chat history for memory
+      const res = await askQuestion(q, syllabusText, marks, messages);
 
       setMessages((m) => [
         ...m,
@@ -64,7 +65,7 @@ export default function ChatWindow() {
         },
       ]);
     }
-  }, [indexed, syllabusText, marks, setMessages]);
+  }, [indexed, syllabusText, marks, messages, setMessages]);
 
   return (
     <motion.div
@@ -81,20 +82,33 @@ export default function ChatWindow() {
         transition={{ delay: 0.1 }}
         className="flex-shrink-0 border-b border-blue-200 dark:border-neon-500/30 p-3 sm:p-4 bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-neon-600 dark:to-neon-700 text-white transition-colors duration-300"
       >
-        <h2 className="font-bold text-sm sm:text-lg flex items-center gap-1 sm:gap-2">
-          <span className="text-xl sm:text-2xl">✨</span>
-          <span className="text-white">Study Assistant</span>
+        <h2 className="font-bold text-sm sm:text-lg flex items-center gap-1.5 sm:gap-2">
+          <motion.div
+            animate={{ rotate: [0, 15, -10, 0] }}
+            transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+          >
+            <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
+          </motion.div>
+          <span className="text-white">StudyMind AI</span>
         </h2>
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-xs sm:text-sm text-blue-100 mt-1"
+          className="text-xs sm:text-sm text-blue-100 mt-1 flex items-center gap-2 flex-wrap"
         >
           {indexed ? (
             <>
-              📚 PDFs ready •
-              {syllabusText ? " 📋 Syllabus loaded • " : " "}
-              {marks === 3 ? "📝 Short" : marks === 5 ? "📄 Medium" : "📚 Long"} answers
+              <span className="flex items-center gap-1">
+                <BookOpen className="w-3 h-3" /> PDFs ready
+              </span>
+              {syllabusText && (
+                <span className="flex items-center gap-1">
+                  • <FileText className="w-3 h-3" /> Syllabus loaded
+                </span>
+              )}
+              <span className="flex items-center gap-1">
+                • <MessageSquare className="w-3 h-3" /> {marks === 3 ? "Short" : marks === 5 ? "Medium" : "Long"} answers
+              </span>
             </>
           ) : (
             "Upload PDFs to start chatting"
