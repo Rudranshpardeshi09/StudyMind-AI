@@ -33,7 +33,6 @@ export default function ChatWindow() {
   }, [messages, scrollToBottom]);
 
   const sendQuestion = useCallback(async (q) => {
-    // Only require indexed PDFs - syllabus is optional
     if (!indexed) {
       alert("Please upload at least one PDF document first.");
       return;
@@ -42,7 +41,6 @@ export default function ChatWindow() {
     setMessages((m) => [...m, { role: "user", content: q }]);
 
     try {
-      // Send question with syllabus context, marks, and chat history for memory
       const res = await askQuestion(q, syllabusText, marks, messages);
 
       setMessages((m) => [
@@ -75,68 +73,64 @@ export default function ChatWindow() {
       className="h-full flex flex-col bg-gradient-to-br from-white via-blue-50 to-indigo-50 dark:bg-gradient-to-br dark:from-neutral-950 dark:via-black dark:to-black dark:border dark:border-neon-500/30 dark:shadow-2xl dark:shadow-neon/20 rounded-xl border-0 shadow-xl overflow-hidden transition-all duration-300 dark:hover:border-neon-500/50 dark:hover:shadow-neon-lg"
     >
 
-      {/* HEADER */}
+      {/* HEADER - Compact */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="flex-shrink-0 border-b border-blue-200 dark:border-neon-500/30 p-3 sm:p-4 bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-neon-600 dark:to-neon-700 text-white transition-colors duration-300"
+        className="flex-shrink-0 border-b border-blue-200 dark:border-neon-500/30 px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-neon-600 dark:to-neon-700 text-white transition-colors duration-300"
       >
-        <h2 className="font-bold text-sm sm:text-lg flex items-center gap-1.5 sm:gap-2">
+        <h2 className="font-bold text-sm flex items-center gap-1.5">
           <motion.div
             animate={{ rotate: [0, 15, -10, 0] }}
             transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
           >
-            <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
+            <Sparkles className="w-4 h-4" />
           </motion.div>
           <span className="text-white">StudyMind AI</span>
         </h2>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-xs sm:text-sm text-blue-100 mt-1 flex items-center gap-2 flex-wrap"
-        >
+        <p className="text-[10px] text-blue-100 mt-0.5 flex items-center gap-1.5 flex-wrap">
           {indexed ? (
             <>
-              <span className="flex items-center gap-1">
-                <BookOpen className="w-3 h-3" /> PDFs ready
+              <span className="flex items-center gap-0.5">
+                <BookOpen className="w-2.5 h-2.5" /> PDFs ready
               </span>
               {syllabusText && (
-                <span className="flex items-center gap-1">
-                  • <FileText className="w-3 h-3" /> Syllabus loaded
+                <span className="flex items-center gap-0.5">
+                  • <FileText className="w-2.5 h-2.5" /> Syllabus
                 </span>
               )}
-              <span className="flex items-center gap-1">
-                • <MessageSquare className="w-3 h-3" /> {marks === 3 ? "Short" : marks === 5 ? "Medium" : "Long"} answers
+              <span className="flex items-center gap-0.5">
+                • <MessageSquare className="w-2.5 h-2.5" /> {marks === 3 ? "Short" : marks === 5 ? "Medium" : "Long"}
               </span>
             </>
           ) : (
-            "Upload PDFs to start chatting"
+            "Upload PDFs to start"
           )}
-        </motion.p>
+        </p>
       </motion.div>
 
       {/* MESSAGES SCROLL AREA */}
       <div className="flex-1 min-h-0">
         <ScrollArea className="h-full w-full scrollbar-thin">
-          <div className="space-y-3 sm:space-y-4 p-3 sm:p-4 pr-2 sm:pr-8">
+          <div className="space-y-2 p-2 sm:p-3">
 
             {messages.length === 0 && (
               <motion.div
                 animate={{ opacity: [0.6, 1] }}
                 transition={{ repeat: Infinity, duration: 2 }}
-                className="h-full flex items-center justify-center"
+                className="h-full flex items-center justify-center py-8"
               >
                 <div className="text-center">
                   <p className="text-2xl mb-2">🎓</p>
-                  <p className="text-xs sm:text-sm text-gray-600 dark:text-neutral-400 px-4">
+                  <p className="text-xs text-gray-600 dark:text-neutral-400 px-4">
                     {!indexed
                       ? "Upload a PDF to get started"
-                      : "Ask any question about your uploaded documents!"}
+                      : "Ask any question about your documents!"}
                   </p>
                   {indexed && !syllabusText && (
-                    <p className="text-[10px] text-gray-500 dark:text-neutral-500 mt-2 px-4">
-                      💡 Tip: Add syllabus/topics for more focused answers
+                    <p className="text-[10px] text-gray-500 dark:text-neutral-500 mt-1 px-4">
+                      💡 Add syllabus for focused answers
                     </p>
                   )}
                 </div>
@@ -151,7 +145,7 @@ export default function ChatWindow() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ type: "spring", stiffness: 120, damping: 22 }}
-                  className="space-y-2"
+                  className="space-y-1"
                 >
                   <MessageBubble role={m.role} content={m.content} error={m.error} />
 
@@ -173,12 +167,12 @@ export default function ChatWindow() {
       </div>
 
 
-      {/* INPUT AREA */}
+      {/* INPUT AREA - Compact */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="flex-shrink-0 border-t border-blue-200 dark:border-neon-500/30 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-neutral-950 dark:to-black transition-colors duration-300"
+        className="flex-shrink-0 border-t border-blue-200 dark:border-neon-500/30 p-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-neutral-950 dark:to-black transition-colors duration-300"
       >
         <ChatInput
           onSend={sendQuestion}

@@ -12,12 +12,17 @@ export default function App() {
   return (
     <ThemeProvider>
       <AppProvider>
-        <div className="h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-black dark:via-neutral-950 dark:to-black transition-colors duration-300">
+        <div className="h-screen flex flex-col overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-black dark:via-neutral-950 dark:to-black transition-colors duration-300">
+          {/* Navigation - fixed height */}
           <Navigation currentPage={currentPage} onNavigate={setCurrentPage} />
-          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+
+          {/* Main content - takes remaining space */}
+          <main className="flex-1 min-h-0 overflow-hidden">
             {currentPage === "home" && <Home />}
             {currentPage === "tutorial" && <Tutorial />}
-          </div>
+          </main>
+
+          {/* Footer - fixed height */}
           <Footer />
         </div>
       </AppProvider>

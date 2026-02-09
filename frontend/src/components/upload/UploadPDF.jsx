@@ -4,10 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { uploadPDF, getIngestStatus, deletePDF, resetPDFs } from "@/api/client";
 import { useApp } from "@/context/AppContext";
+import { FileUp, Trash2, RefreshCw, FileText, CheckCircle, XCircle, Loader2 } from "lucide-react";
 
-// ══════════════════════════════════════════════════════════════════════════════
-// CONSTANTS
-// ══════════════════════════════════════════════════════════════════════════════
 const POLLING_INTERVAL = 2000;
 
 const cardVariants = {
@@ -15,29 +13,37 @@ const cardVariants = {
   visible: { opacity: 1, scale: 1, transition: { duration: 0.5 } },
 };
 
-// ══════════════════════════════════════════════════════════════════════════════
-// MEMOIZED SUB-COMPONENTS
-// ══════════════════════════════════════════════════════════════════════════════
+// File item with Lucide icons
 const FileItem = memo(({ file, onDelete }) => (
-  <div className="bg-gray-100 dark:bg-neutral-800/80 p-3 rounded space-y-1 transition-colors duration-300">
+  <div className="bg-gray-100 dark:bg-neutral-800/80 p-2 rounded space-y-1 transition-colors duration-300">
     <div className="flex justify-between items-center gap-2">
-      <span className="truncate text-xs font-medium flex-1 min-w-0">{file.name}</span>
+      <span className="truncate text-[10px] font-medium flex-1 min-w-0 flex items-center gap-1">
+        <FileText className="w-3 h-3 flex-shrink-0" />
+        {file.name}
+      </span>
       <Button
         size="sm"
         variant="destructive"
         onClick={() => onDelete(file.name)}
-        className="flex-shrink-0"
+        className="flex-shrink-0 h-6 px-2 text-[10px]"
       >
-        Delete
+        <Trash2 className="w-3 h-3" />
       </Button>
     </div>
 
-    <p className="text-[11px] text-gray-600 dark:text-neutral-400">
-      Status: <strong>{file.status || "Processing"}</strong>
+    <p className="text-[9px] text-gray-600 dark:text-neutral-400 flex items-center gap-1">
+      {file.status === "completed" ? (
+        <CheckCircle className="w-2.5 h-2.5 text-green-500" />
+      ) : file.status === "failed" ? (
+        <XCircle className="w-2.5 h-2.5 text-red-500" />
+      ) : (
+        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+      )}
+      <strong>{file.status || "Processing"}</strong>
     </p>
 
     {typeof file.progress === "number" && (
-      <div className="h-2 bg-gray-300 dark:bg-neutral-700 rounded overflow-hidden">
+      <div className="h-1.5 bg-gray-300 dark:bg-neutral-700 rounded overflow-hidden">
         <div
           className={`h-full transition-all duration-500 ease-out ${file.status === "completed"
             ? "bg-green-500 dark:bg-neon-500"
@@ -51,27 +57,23 @@ const FileItem = memo(({ file, onDelete }) => (
     )}
 
     {file.status === "completed" && (
-      <p className="text-[11px] text-green-700 dark:text-neon-400">
-        📄 Pages: {file.pages} | 🔗 Chunks: {file.chunks}
+      <p className="text-[9px] text-green-700 dark:text-neon-400">
+        Pages: {file.pages} | Chunks: {file.chunks}
       </p>
     )}
   </div>
 ));
 
-// ══════════════════════════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ══════════════════════════════════════════════════════════════════════════════
 export default function UploadPDF() {
   const { setIndexed } = useApp();
 
   const [loading, setLoading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState([]); // Moved to AppContext
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const [error, setError] = useState(null);
 
   const pollingRefs = useRef({});
   const isMountedRef = useRef(true);
 
-  // ✅ 1. LIFECYCLE: Cleanup on unmount
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -81,23 +83,15 @@ export default function UploadPDF() {
     };
   }, []);
 
-  // ✅ 2. NEW: Safe Side Effects (This fixes your error)
-  // Instead of setting state inside other state updaters, we watch 'uploadedFiles'
   useEffect(() => {
-    // Sync Global Context: If any file is completed, app is "Indexed"
     const hasCompleted = uploadedFiles.some((f) => f.status === "completed");
     setIndexed(hasCompleted);
 
-    // Sync Loading State: If any file is uploading/processing, we are "Loading"
     const isBusy = uploadedFiles.some(
       (f) => f.status === "uploading" || f.status === "processing" || f.status === "pending"
     );
     setLoading(isBusy);
-
   }, [uploadedFiles, setIndexed]);
-
-
-  /* ================= POLLING ================= */
 
   const pollIngestionStatus = useCallback((filename) => {
     if (pollingRefs.current[filename]) return;
@@ -119,8 +113,6 @@ export default function UploadPDF() {
           return;
         }
 
-        // ✅ FIXED: Only update local state here. 
-        // The useEffect above handles setIndexed and setLoading automatically.
         setUploadedFiles((prev) =>
           prev.map((f) =>
             f.name === filename
@@ -148,15 +140,12 @@ export default function UploadPDF() {
     pollingRefs.current[filename] = intervalId;
   }, []);
 
-  /* ================= UPLOAD ================= */
-
   const handleUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     e.target.value = "";
     setError(null);
-    // Note: setLoading(true) is handled automatically by the useEffect when we add the file below
 
     setUploadedFiles((prev) => [
       ...prev,
@@ -185,8 +174,6 @@ export default function UploadPDF() {
     }
   }, [pollIngestionStatus]);
 
-  /* ================= DELETE ================= */
-
   const removePDF = useCallback(async (filename) => {
     try {
       await deletePDF(filename);
@@ -198,17 +185,13 @@ export default function UploadPDF() {
 
       if (!isMountedRef.current) return;
 
-      // ✅ FIXED: Just filter the list. The useEffect handles the rest.
       setUploadedFiles((prev) => prev.filter((f) => f.name !== filename));
-
     } catch {
       if (isMountedRef.current) {
         setError("Failed to delete PDF");
       }
     }
   }, []);
-
-  /* ================= RESET ================= */
 
   const resetAll = useCallback(async () => {
     try {
@@ -227,10 +210,6 @@ export default function UploadPDF() {
     }
   }, []);
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // RENDER
-  // ══════════════════════════════════════════════════════════════════════════════
-
   return (
     <motion.div
       variants={cardVariants}
@@ -238,26 +217,27 @@ export default function UploadPDF() {
       animate="visible"
       className="h-full w-full"
     >
-      <Card className="h-full flex flex-col shadow-lg border-0 bg-gradient-to-br from-white to-blue-50 dark:bg-gradient-to-br dark:from-neutral-950 dark:via-black dark:to-black dark:border dark:border-neon-500/30 dark:shadow-2xl dark:shadow-neon/20 hover:shadow-xl transition-all duration-300 dark:hover:border-neon-500/50 dark:hover:shadow-neon-lg">
+      <Card className="h-full flex flex-col shadow-lg border-0 bg-gradient-to-br from-white to-blue-50 dark:bg-gradient-to-br dark:from-neutral-950 dark:via-black dark:to-black dark:border dark:border-neon-500/30 dark:shadow-2xl dark:shadow-neon/20 hover:shadow-xl transition-all duration-300 dark:hover:border-neon-500/50 dark:hover:shadow-neon-lg overflow-hidden">
 
-        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-neon-600 dark:to-neon-700 text-white rounded-t-lg p-3 sm:p-4 transition-colors duration-300">
-          <CardTitle className="text-sm sm:text-base font-semibold flex items-center gap-1 sm:gap-2">
-            <span className="text-xl sm:text-2xl">📄</span>
+        {/* Header - Compact */}
+        <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-neon-600 dark:to-neon-700 text-white rounded-t-lg px-3 py-2 transition-colors duration-300 flex-shrink-0">
+          <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+            <FileUp className="w-4 h-4" />
             <span className="text-white">Upload PDF</span>
           </CardTitle>
         </CardHeader>
 
-        <CardContent className="space-y-3 sm:space-y-4 flex-1 flex flex-col p-3 sm:p-5">
+        <CardContent className="space-y-2 flex-1 flex flex-col p-2 overflow-hidden min-h-0">
 
-          {/* FILE INPUT */}
-          <div className="space-y-2">
-            <label className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-neutral-200 block">
+          {/* File Input */}
+          <div className="space-y-1 flex-shrink-0">
+            <label className="text-[10px] font-semibold text-gray-700 dark:text-neutral-200 block">
               Select PDF Document
             </label>
             <div className="relative">
               <input
                 type="file"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept=".pdf,.docx,application/pdf"
                 onChange={handleUpload}
                 disabled={loading}
                 className="hidden"
@@ -265,40 +245,40 @@ export default function UploadPDF() {
               />
               <label
                 htmlFor="pdf-upload"
-                className={`block w-full px-3 sm:px-4 py-2 sm:py-3 rounded-lg border-2 border-dashed transition-all duration-300 cursor-pointer text-center ${loading
+                className={`block w-full px-2 py-2 rounded-lg border-2 border-dashed transition-all duration-300 cursor-pointer text-center ${loading
                   ? "border-gray-300 bg-gray-50 dark:border-neutral-600 dark:bg-neutral-800"
-                  : "border-blue-400 bg-blue-50 hover:border-blue-600 hover:bg-blue-100 dark:border-neon-500/50 dark:bg-neutral-800 dark:hover:border-neon-400 dark:hover:bg-neutral-700 dark:hover:shadow-neon-sm"
+                  : "border-blue-400 bg-blue-50 hover:border-blue-600 hover:bg-blue-100 dark:border-neon-500/50 dark:bg-neutral-800 dark:hover:border-neon-400"
                   }`}
               >
-                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-neutral-300">
+                <span className="text-[10px] font-medium text-gray-700 dark:text-neutral-300">
                   {loading ? "Uploading..." : "Choose PDF or drag"}
                 </span>
               </label>
             </div>
           </div>
 
-          {/* ERROR STATE */}
+          {/* Error */}
           <AnimatePresence>
             {error && (
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="text-xs text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-950/50 border border-red-300 dark:border-red-800 p-2 sm:p-3 rounded-lg break-words animate-fade-in"
+                exit={{ opacity: 0 }}
+                className="text-[10px] text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-950/50 border border-red-300 dark:border-red-800 p-1.5 rounded-lg flex-shrink-0"
               >
                 ⚠️ {error}
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* MULTI PDF LIST - WITH SCROLLING */}
+          {/* File List */}
           {uploadedFiles.length > 0 && (
-            <div className="flex-1 flex flex-col min-h-0 text-xs">
-              <p className="font-semibold text-gray-700 dark:text-neutral-200 mb-2 flex-shrink-0">
-                Uploaded PDFs ({uploadedFiles.length})
+            <div className="flex-1 flex flex-col min-h-0">
+              <p className="font-semibold text-[10px] text-gray-700 dark:text-neutral-200 mb-1 flex-shrink-0">
+                Uploaded ({uploadedFiles.length})
               </p>
 
-              <div className="flex-1 overflow-y-auto max-h-48 space-y-2 pr-1 scrollbar-thin scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-neutral-600">
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
                 {uploadedFiles.map((f) => (
                   <FileItem key={f.name} file={f} onDelete={removePDF} />
                 ))}
@@ -308,21 +288,21 @@ export default function UploadPDF() {
                 variant="outline"
                 size="sm"
                 onClick={resetAll}
-                className="w-full mt-2 flex-shrink-0"
+                className="w-full mt-1.5 flex-shrink-0 text-[10px] h-7 flex items-center justify-center gap-1"
               >
-                Reset All PDFs
+                <RefreshCw className="w-3 h-3" /> Reset All
               </Button>
             </div>
           )}
 
-          {/* INFO */}
+          {/* Info */}
           {!loading && uploadedFiles.length === 0 && (
             <motion.p
-              className="text-xs text-gray-600 flex-1 flex items-end"
+              className="text-[9px] text-gray-600 dark:text-neutral-500 flex-1 flex items-end"
               animate={{ opacity: [0.7, 1] }}
               transition={{ repeat: Infinity, duration: 2 }}
             >
-              ✨ Upload a PDF document to index and search its content. Supports PDFs up to 50MB.
+              ✨ Upload PDFs up to 50MB to search content.
             </motion.p>
           )}
         </CardContent>
