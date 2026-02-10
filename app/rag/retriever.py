@@ -1,19 +1,12 @@
-"""Optimized retriever configuration for speed and accuracy."""
-
+# this function creates a search tool that finds relevant content from our PDFs
 def get_retriever(vectorstore):
-    """
-    Get a retriever optimized for Q&A tasks with balance of speed and accuracy.
-    
-    MMR (Max Marginal Relevance) search:
-    - k: number of results to return (reduced for speed)
-    - fetch_k: candidates to consider before MMR
-    - lambda_mult: 1.0 = max relevance, 0.0 = max diversity
-    """
+    # using MMR (Maximal Marginal Relevance) search which gives us
+    # results that are both relevant AND diverse (not all saying the same thing)
     return vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={
-            "k": 5,           # Reduced from 8 to 5 for speed
-            "fetch_k": 15,    # Reduced from 20 to 15
-            "lambda_mult": 0.9  # Higher relevance focus (was 0.85)
+            "k": 5,           # return top 5 most relevant chunks
+            "fetch_k": 15,    # look at 15 candidates before picking the best 5
+            "lambda_mult": 0.9  # 0.9 means we care more about relevance than diversity
         }
     )

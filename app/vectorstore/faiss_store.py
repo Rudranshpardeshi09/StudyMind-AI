@@ -1,7 +1,5 @@
-"""
-FAISS Vector Store Module
-Handles embeddings storage with support for accumulating multiple PDFs
-"""
+# this file manages our FAISS vector database where we store PDF embeddings
+# embeddings are numerical representations of text that allow us to search by meaning
 
 import os
 import logging
@@ -11,87 +9,72 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Cache embeddings model to avoid reloading (memory optimization)
+# we cache the embeddings model so it only loads once (it takes time to load)
 _embeddings_cache = None
 
 
+# loads the embedding model that converts text into numbers the AI can search
 def get_embeddings():
-    """
-    Local embeddings for large-document RAG.
-    No API quota. Production safe.
-    Uses caching to prevent repeated model loading.
-    """
     global _embeddings_cache
+    # only load the model if we havent loaded it before
     if _embeddings_cache is None:
         logger.info("Loading embeddings model...")
+        # using a lightweight but good model that runs locally (no API calls needed)
         _embeddings_cache = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
     return _embeddings_cache
 
 
+# saves new text chunks into our vector database
 def save_vectorstore(chunks, replace=False):
-    """
-    Save chunks to vectorstore.
-    
-    Args:
-        chunks: List of document chunks to add
-        replace: If True, replace entire vectorstore. If False, merge with existing.
-    
-    This function ACCUMULATES documents by default, so all uploaded PDFs
-    are searchable together.
-    """
     embeddings = get_embeddings()
     
-    # Check if vectorstore exists and we should merge
+    # if we already have a database and we're not replacing it, merge new data in
     if not replace and os.path.exists(settings.VECTOR_DB_PATH):
         try:
-            # Load existing vectorstore
+            # load the existing database
             logger.info("Loading existing vectorstore to merge new documents...")
             existing_db = FAISS.load_local(
                 settings.VECTOR_DB_PATH,
                 embeddings,
-                allow_dangerous_deserialization=True
+                allow_dangerous_deserialization=True  # needed for loading saved FAISS files
             )
             
-            # Create new vectorstore from new chunks
+            # create a new database from the new chunks
             new_db = FAISS.from_documents(chunks, embeddings)
             
-            # Merge new documents into existing
+            # combine old and new data together
             existing_db.merge_from(new_db)
             
-            # Save merged vectorstore
+            # save the combined database back to disk
             existing_db.save_local(settings.VECTOR_DB_PATH)
             logger.info(f"Merged {len(chunks)} new chunks into existing vectorstore")
             
         except Exception as e:
+            # if merging fails, just create a fresh database
             logger.warning(f"Failed to merge, creating new vectorstore: {e}")
-            # Fallback: create new vectorstore
             db = FAISS.from_documents(chunks, embeddings)
             db.save_local(settings.VECTOR_DB_PATH)
     else:
-        # Create new vectorstore (first upload or explicit replace)
+        # first time upload or explicit replace - create a brand new database
         logger.info(f"Creating new vectorstore with {len(chunks)} chunks...")
         db = FAISS.from_documents(chunks, embeddings)
         db.save_local(settings.VECTOR_DB_PATH)
 
 
+# completely replaces the database (used after deleting a PDF to rebuild from scratch)
 def replace_vectorstore(chunks):
-    """
-    Replace entire vectorstore with new chunks.
-    Use this when rebuilding from all uploads.
-    """
     save_vectorstore(chunks, replace=True)
 
 
+# loads the vector database from disk so we can search it
 def load_vectorstore():
-    """
-    Load the vectorstore for querying.
-    Returns None if vectorstore doesn't exist.
-    """
+    # if no database exists yet, return nothing
     if not os.path.exists(settings.VECTOR_DB_PATH):
         return None
-        
+    
+    # load and return the database
     return FAISS.load_local(
         settings.VECTOR_DB_PATH,
         get_embeddings(),

@@ -1,3 +1,4 @@
+# this file handles loading and processing PDFs into searchable chunks
 import logging
 import os, shutil
 from langchain_community.document_loaders import PyPDFLoader
@@ -6,76 +7,66 @@ from app.vectorstore.faiss_store import save_vectorstore
 from fastapi import UploadFile
 
 logger = logging.getLogger(__name__)
+# folder where all uploaded PDFs are stored
 UPLOAD_DIR = "app/data/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# takes a PDF file and processes it into searchable chunks stored in our database
 def ingest_pdf(input_source):
-    """
-    Accepts either:
-    - UploadFile (from API upload)
-    - str file_path (from background task)
-
-    Behavior is identical for both.
-    """
-
-    # 🔑 NORMALIZE INPUT (NO BEHAVIOR CHANGE)
+    # figure out if we got an uploaded file or a file path
     if isinstance(input_source, UploadFile):
+        # if its an upload, save it to our uploads folder first
         filename = input_source.filename
         persistent_path = os.path.join(UPLOAD_DIR, filename)
-
-        # ✅ Save file ONCE (required for delete/reset)
         with open(persistent_path, "wb") as f:
             shutil.copyfileobj(input_source.file, f)
 
     elif isinstance(input_source, str):
+        # if its a file path, just use it directly
         persistent_path = input_source
         filename = os.path.basename(persistent_path)
-
         if not os.path.exists(persistent_path):
             raise FileNotFoundError(f"PDF not found: {persistent_path}")
-
     else:
         raise TypeError("ingest_pdf expects UploadFile or file path")
 
     try:
         logger.info(f"Loading PDF: {filename}")
 
-        # 🔹 LOAD PDF
+        # load the PDF based on its file type
         if persistent_path.lower().endswith(".pdf"):
+            # use PyPDF to extract text from each page
             loader = PyPDFLoader(persistent_path)
             documents = loader.load()
         elif persistent_path.lower().endswith(".docx"):
+            # for DOCX files, read all paragraphs and combine them
             from docx import Document as DocxDocument
             from langchain_core.documents import Document
-            
             doc = DocxDocument(persistent_path)
             full_text = []
             for para in doc.paragraphs:
                 if para.text.strip():
                     full_text.append(para.text)
-            
-            # Create a single document for the whole DOCX (or split by paragraphs if preferred)
-            # For consistency with PDF loader which yields pages, we can just treat the whole doc as one "page"
-            # or try to split it. A single doc is fine for the chunker.
             documents = [Document(page_content="\n".join(full_text), metadata={"source": persistent_path})]
         else:
             raise ValueError("Unsupported file format")
 
+        # make sure we actually got some text from the file
         if not documents:
             raise ValueError("PDF file is empty or unreadable")
 
         total_pages = len(documents)
         logger.info(f"Loaded {total_pages} pages from {filename}")
 
-        # 🔹 CHUNK DOCUMENTS
+        # split the documents into smaller chunks for better search results
         chunks = chunk_documents(documents)
         logger.info(f"Created {len(chunks)} chunks")
 
-        # 🔹 SAVE VECTORSTORE (blocking, required)
+        # save the chunks to our vector database so they can be searched later
         save_vectorstore(chunks)
         logger.info(f"Successfully ingested {filename}")
 
-        # ✅ REQUIRED RETURN (this fixes endless polling)
+        # return info about what we processed
         return {
             "status": "success",
             "filename": filename,
@@ -87,19 +78,9 @@ def ingest_pdf(input_source):
         logger.error(f"Error processing PDF {filename}: {str(e)}")
         raise
 
-    # finally:
-    #     # Clean up temporary file
-    #     if persistent_path and os.path.exists(persistent_path):
-    #         try:
-    #             os.remove(persistent_path)
-    #         except Exception as e:
-    #             logger.warning(f"Failed to delete temp file {persistent_path}: {str(e)}")
-
+# rebuilds the entire vector database from all remaining PDFs
+# this is called after deleting a PDF to keep the database accurate
 def rebuild_vectorstore_from_uploads():
-    """
-    Rebuild the entire vectorstore from all uploaded PDFs.
-    Called after deleting a PDF to ensure consistency.
-    """
     from app.vectorstore.faiss_store import replace_vectorstore
     from app.rag.chunking import chunk_documents
     from app.core.config import settings
@@ -109,17 +90,17 @@ def rebuild_vectorstore_from_uploads():
 
     uploads_dir = "app/data/uploads"
 
-    # Guard: uploads directory does not exist
+    # if no uploads folder exists, nothing to rebuild
     if not os.path.exists(uploads_dir):
         return
 
-    # Collect all PDF files
+    # find all PDF and DOCX files in the uploads folder
     pdf_files = [
         f for f in os.listdir(uploads_dir)
         if f.lower().endswith(".pdf") or f.lower().endswith(".docx")
     ]
 
-    # If no PDFs exist → wipe vector DB and exit
+    # if all PDFs are deleted, clear the database and stop
     if not pdf_files:
         if os.path.exists(settings.VECTOR_DB_PATH):
             shutil.rmtree(settings.VECTOR_DB_PATH)
@@ -128,15 +109,14 @@ def rebuild_vectorstore_from_uploads():
 
     documents = []
 
-    # Load ALL remaining PDFs
+    # reload every remaining PDF
     for filename in pdf_files:
-        # try:
         try:
             if filename.lower().endswith(".pdf"):
                 loader = PyPDFLoader(os.path.join(uploads_dir, filename))
                 documents.extend(loader.load())
             elif filename.lower().endswith(".docx"):
-                 # Simplified DOCX loading for rebuild
+                # handle DOCX files during rebuild too
                 from docx import Document as DocxDocument
                 from langchain_core.documents import Document
                 path = os.path.join(uploads_dir, filename)
@@ -147,14 +127,13 @@ def rebuild_vectorstore_from_uploads():
         except Exception as e:
             logger.warning(f"Failed to load {filename}: {e}")
 
-    # Safety: no documents loaded
+    # if nothing could be loaded, clear the database
     if not documents:
         if os.path.exists(settings.VECTOR_DB_PATH):
             shutil.rmtree(settings.VECTOR_DB_PATH)
         return
 
-    # Chunk and REPLACE vectorstore (not merge)
+    # split all documents into chunks and create a fresh database
     chunks = chunk_documents(documents)
     replace_vectorstore(chunks)
     logger.info(f"Rebuilt vectorstore with {len(chunks)} chunks from {len(pdf_files)} PDFs")
-

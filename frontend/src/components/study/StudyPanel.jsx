@@ -1,3 +1,4 @@
+// this component lets users configure study settings like answer length and syllabus
 import { useState, useCallback, useRef, useEffect, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApp } from "@/context/AppContext";
@@ -8,25 +9,27 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { uploadSyllabus } from "@/api/client";
 import { Settings, FileText, Edit3, Check, Zap } from "lucide-react";
 
-// Animation variants
+// animation for the card appearing on screen
 const cardVariants = {
   hidden: { opacity: 0, scale: 0.95 },
   visible: { opacity: 1, scale: 1, transition: { duration: 0.5, delay: 0.1 } },
 };
 
+// animation for expanding/collapsing sections
 const sectionVariants = {
   hidden: { opacity: 0, height: 0, overflow: "hidden" },
   visible: { opacity: 1, height: "auto", transition: { duration: 0.3 } },
   exit: { opacity: 0, height: 0, transition: { duration: 0.2 } }
 };
 
+// configuration for the three answer length options
 const marksConfig = {
   3: { label: "Short", color: "from-blue-600 to-blue-700", icon: Zap, desc: "~100 words", darkColor: "dark:from-neon-600 dark:to-neon-700" },
   5: { label: "Medium", color: "from-indigo-600 to-indigo-700", icon: FileText, desc: "~250 words", darkColor: "dark:from-neon-500 dark:to-neon-600" },
   12: { label: "Long", color: "from-purple-600 to-purple-700", icon: Settings, desc: "~500 words", darkColor: "dark:from-neon-400 dark:to-neon-500" },
 };
 
-// Mark button with Lucide icon
+// a single marks selection button (short/medium/long)
 const MarkButton = memo(({ mark, isActive, onClick }) => {
   const IconComponent = marksConfig[mark].icon;
   return (
@@ -46,12 +49,13 @@ const MarkButton = memo(({ mark, isActive, onClick }) => {
   );
 });
 
-// Toggle switch
+// custom toggle switch component for enabling/disabling study mode
 const MotionSwitch = ({ isOn, onToggle }) => (
   <div
     onClick={onToggle}
     className={`w-9 h-4 flex items-center rounded-full p-0.5 cursor-pointer transition-colors duration-300 ${isOn ? 'bg-purple-600 dark:bg-neon-600' : 'bg-gray-300 dark:bg-neutral-700'}`}
   >
+    {/* the sliding circle inside the toggle */}
     <motion.div
       layout
       transition={{ type: "spring", stiffness: 700, damping: 30 }}
@@ -61,17 +65,22 @@ const MotionSwitch = ({ isOn, onToggle }) => (
 );
 
 export default function StudyPanel() {
+  // get shared study settings from context
   const { syllabusText, setSyllabusText, marks, setMarks, clearSyllabus } = useApp();
 
+  // local state for syllabus file upload
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  // whether the syllabus context section is expanded or not
   const [isStudyMode, setIsStudyMode] = useState(false);
 
+  // refs for cleanup
   const isMountedRef = useRef(true);
   const timeoutRef = useRef(null);
 
+  // cleanup effect when component unmounts
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
@@ -80,12 +89,14 @@ export default function StudyPanel() {
     };
   }, []);
 
+  // clears all syllabus data
   const handleClear = useCallback(() => {
     clearSyllabus();
     setFile(null);
     setError(null);
   }, [clearSyllabus]);
 
+  // toggles study mode on/off and clears data when turning off
   const toggleWithClear = useCallback(() => {
     setIsStudyMode(prev => {
       if (prev === true) handleClear();
@@ -93,11 +104,13 @@ export default function StudyPanel() {
     });
   }, [handleClear]);
 
+  // handles when user picks a syllabus file
   const handleFileChange = useCallback((e) => {
     setFile(e.target.files?.[0] || null);
     setError(null);
   }, []);
 
+  // uploads the selected syllabus file to the backend for parsing
   const handleFileUpload = useCallback(async () => {
     if (!file) {
       setError("Please select a file");
@@ -107,9 +120,11 @@ export default function StudyPanel() {
     setError(null);
 
     try {
+      // send the file to backend for parsing
       const res = await uploadSyllabus(file);
       if (!isMountedRef.current) return;
 
+      // format the parsed data into readable text
       const { subject, units } = res.data;
       let textContent = subject ? `Subject: ${subject}\n\n` : "";
 
@@ -123,10 +138,12 @@ export default function StudyPanel() {
         });
       }
 
+      // update the syllabus text in shared context
       setSyllabusText(textContent.trim());
       setUploadSuccess(true);
       setFile(null);
 
+      // hide the success message after 3 seconds
       timeoutRef.current = setTimeout(() => {
         if (isMountedRef.current) setUploadSuccess(false);
       }, 3000);
@@ -139,10 +156,12 @@ export default function StudyPanel() {
     }
   }, [file, setSyllabusText]);
 
+  // handles typing in the syllabus text area
   const handleTextChange = useCallback((e) => {
     setSyllabusText(e.target.value);
   }, [setSyllabusText]);
 
+  // handles clicking a marks button
   const handleMarkChange = useCallback((m) => {
     setMarks(m);
   }, [setMarks]);
@@ -156,7 +175,7 @@ export default function StudyPanel() {
     >
       <Card className="h-full flex flex-col shadow-lg border-0 bg-gradient-to-br from-white to-purple-50 dark:bg-gradient-to-br dark:from-neutral-950 dark:via-black dark:to-black dark:border dark:border-neon-500/30 dark:shadow-2xl dark:shadow-neon/20 transition-all duration-300 overflow-hidden">
 
-        {/* Header - Compact */}
+        {/* header with study mode toggle */}
         <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 dark:from-neon-600 dark:to-neon-700 text-white rounded-t-lg px-3 py-2 flex-shrink-0">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
@@ -164,6 +183,7 @@ export default function StudyPanel() {
               <span className="text-white">Study Panel</span>
             </CardTitle>
 
+            {/* on/off toggle for syllabus context mode */}
             <div className="flex items-center gap-1.5 bg-white/20 px-2 py-0.5 rounded-full backdrop-blur-sm">
               <span className="text-[9px] font-medium opacity-90">
                 {isStudyMode ? "ON" : "OFF"}
@@ -177,7 +197,7 @@ export default function StudyPanel() {
           <ScrollArea className="flex-1 w-full">
             <div className="space-y-3 pr-1">
 
-              {/* Answer Length */}
+              {/* answer length selection (short / medium / long) */}
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold text-gray-700 dark:text-neutral-200 flex items-center gap-1">
                   <Zap className="w-3 h-3" /> Answer Length
@@ -196,9 +216,10 @@ export default function StudyPanel() {
 
               <Separator className="dark:bg-neutral-700" />
 
-              {/* Context Section */}
+              {/* context section - shows depending on whether study mode is on */}
               <AnimatePresence>
                 {!isStudyMode ? (
+                  // when study mode is off, show a simple info message
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -213,6 +234,7 @@ export default function StudyPanel() {
                     </p>
                   </motion.div>
                 ) : (
+                  // when study mode is on, show syllabus upload and text input
                   <motion.div
                     variants={sectionVariants}
                     initial="hidden"
@@ -220,7 +242,7 @@ export default function StudyPanel() {
                     exit="exit"
                     className="space-y-2"
                   >
-                    {/* File Upload */}
+                    {/* syllabus file upload area */}
                     <div className="space-y-1">
                       <label className="text-[10px] font-semibold text-gray-700 dark:text-neutral-200 flex items-center gap-1">
                         <FileText className="w-3 h-3" /> Upload Syllabus
@@ -245,6 +267,7 @@ export default function StudyPanel() {
                             {file ? file.name : "Choose file..."}
                           </label>
                         </div>
+                        {/* button to send the file for parsing */}
                         <Button
                           onClick={handleFileUpload}
                           disabled={!file || loading}
@@ -256,7 +279,7 @@ export default function StudyPanel() {
                       </div>
                     </div>
 
-                    {/* Messages */}
+                    {/* error and success messages */}
                     <AnimatePresence>
                       {error && (
                         <motion.p
@@ -281,12 +304,13 @@ export default function StudyPanel() {
                       )}
                     </AnimatePresence>
 
-                    {/* Text Area */}
+                    {/* text area for manually typing or editing syllabus context */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-semibold text-gray-700 dark:text-neutral-200 flex items-center gap-1">
                           <Edit3 className="w-3 h-3" /> Topics / Context
                         </label>
+                        {/* clear button only shows when there is text */}
                         {syllabusText && (
                           <Button
                             variant="ghost"
@@ -306,6 +330,7 @@ export default function StudyPanel() {
                       />
                     </div>
 
+                    {/* shows a confirmation when syllabus context is active */}
                     {syllabusText && (
                       <motion.div
                         initial={{ opacity: 0 }}

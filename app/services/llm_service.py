@@ -13,10 +13,10 @@ GEMINI_MODEL_PRIORITY = [
 
 @lru_cache(maxsize=1)
 def get_llm():
-    """
-    Returns a Gemini LLM using a safe fallback strategy.
-    No probing calls. No runtime crashes.
-    """
+    
+    # Returns a Gemini LLM using a safe fallback strategy.
+    # No probing calls. No runtime crashes.
+    
     last_error = None
 
     for model_name in GEMINI_MODEL_PRIORITY:
@@ -27,7 +27,7 @@ def get_llm():
                 temperature=0
             )
 
-            # ✅ Do NOT call invoke() here
+            
             print(f"[LLM] Selected Gemini model: {model_name}")
             return llm
 
