@@ -1,587 +1,200 @@
-# 📚 StudyMind AI: Intelligent PDF Learning Assistant
+# StudyMind AI
 
-<div align="center">
+Upload your course material and ask questions about it. Answers are generated
+only from your own documents and every one cites the document, page and passage
+it came from, so you can check the source rather than trust the model.
 
-![StudyMind AI Banner](https://img.shields.io/badge/StudyMind%20AI-RAG%20Learning%20Platform-000?style=for-the-badge&logo=book)
-
-**Transform your study materials into an intelligent AI tutor powered by RAG**
-
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square&logo=python)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg?style=flat-square&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18+-61DAFB.svg?style=flat-square&logo=react)](https://react.dev/)
-[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4+-38B2AC.svg?style=flat-square&logo=tailwindcss)](https://tailwindcss.com/)
-[![LangChain](https://img.shields.io/badge/LangChain-RAG%20Orchestration-black.svg?style=flat-square&logo=chain-link)](https://www.langchain.com/)
-[![Google Gemini](https://img.shields.io/badge/Google-Gemini%20API-orange.svg?style=flat-square&logo=google)](https://deepmind.google/technologies/gemini/)
-[![FAISS](https://img.shields.io/badge/FAISS-Vector%20Search-purple.svg?style=flat-square)](https://faiss.ai/)
-![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
-
-[🚀 Live Demo](#-quick-start-guide) • [📖 Documentation](#-getting-started) • [🤝 Contributing](#-contributing) • [🐛 Report Bug](../../issues)
-
-</div>
+- **RAG Q&A** with verifiable citations and answer-length control
+- **Streamed generation stages** — the UI shows what the server is actually doing
+- **Mind maps** from a document, a chapter, or a single topic
+- **Per-user isolation** — documents, indexes, chats and maps are private to an account
 
 ---
 
-## 🎯 What is StudyMind AI?
+## Stack
 
-StudyMind AI is a **next-generation Retrieval-Augmented Generation (RAG)** application that revolutionizes the way students study. Upload your textbooks, lecture notes, and study guides, then interact with an intelligent AI tutor that answers questions with **precise citations** directly from your documents.
-
-No hallucinations. No made-up information. Just factual, verified answers backed by page numbers and text snippets from your own materials.
-
-Perfect for:
-- 🎓 **Exam Preparation** - Generate answers in exam formats (3-mark, 5-mark, 12-mark)
-- 📖 **Self-Study** - Ask unlimited questions about your course materials
-- 🔍 **Fact Verification** - Cross-verify answers with instant source attribution
-- 📱 **Learning On-The-Go** - Fully responsive design works on all devices
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, Vite, React Router 7, Tailwind, Radix UI, Framer Motion, React Flow |
+| Backend | FastAPI, Pydantic v2, SQLite |
+| Retrieval | LangChain, FAISS, HuggingFace `all-MiniLM-L6-v2` |
+| Generation | Google Gemini |
+| Tests | pytest + httpx, Vitest + Testing Library |
 
 ---
 
-## ✨ Key Features
+## Running it locally
 
-### 🧠 Intelligent RAG Pipeline
-- **LangChain + Google Gemini** integration for context-aware, factually grounded answers
-- **Semantic search** using HuggingFace embeddings for relevance ranking
-- Smart prompt engineering tailored for academic responses
+### Backend
 
-### 📑 Multi-PDF Knowledge Base
-- Upload **multiple PDFs simultaneously** (up to 50MB each)
-- Process textbooks, lecture notes, and study guides in one unified system
-- Automatic FAISS indexing for instant semantic search
-
-### 🎯 Exam-Focused Answers
-- **3-Mark Answers** - Concise, punchy responses
-- **5-Mark Answers** - Moderate depth with examples
-- **12-Mark Answers** - Comprehensive, detailed explanations
-- Tailor answer length to your exam requirements
-
-### 🔍 Precise Source Attribution
-Every answer includes:
-- ✅ **Exact page numbers** from your PDFs
-- ✅ **Text snippets** showing the source content
-- ✅ **Clickable source cards** for instant reference
-- Never doubt the origin of an answer again
-
-### 🎨 Beautiful, Modern UI
-- ✨ **Smooth animations** powered by Framer Motion
-- 📱 **Fully responsive** - Desktop, tablet, and mobile optimized
-- 🌙 **Dark/Light mode** with custom neon green theme accents
-- 🎯 Intuitive chat interface with real-time typing indicators
-
-### 💾 Document Management
-- Delete individual PDFs without rebuilding entire index
-- Reset everything with one click
-- Real-time upload status tracking
-- Support for PDF and DOCX formats
-
-### 📚 Syllabus Context Mode
-- Upload or paste your syllabus for curriculum-aligned answers
-- AI adjusts responses based on your course scope
-- Never answer questions outside your curriculum
-
-### 💬 Smart Chat Memory
-- Maintains 15-message conversation history
-- Context-aware follow-up questions
-- Remembers your study goals and preferences
-
----
-
-## ⚙️ Tech Stack
-
-| Layer | Technologies |
-|-------|--------------|
-| **Frontend** | React 18, Vite, Tailwind CSS, Framer Motion, Radix UI, Lucide Icons |
-| **Backend** | Python 3.9+, FastAPI, Uvicorn, Pydantic |
-| **AI/ML** | LangChain, Google Gemini API, HuggingFace Sentence-Transformers |
-| **Vector DB** | FAISS (Facebook AI Similarity Search) |
-| **Document Processing** | PyPDF2, PyPDFPlumber, python-docx |
-| **Styling** | Tailwind CSS 3.4, CSS Variables for theming |
-| **HTTP Client** | Axios |
-| **State Management** | React Context API |
-
----
-
-## 🚀 Getting Started
-
-### 📋 Prerequisites
-
-Before you begin, ensure you have the following installed:
-
-- **Python 3.9+** - [Download](https://www.python.org/downloads/)
-- **Node.js 18+** - [Download](https://nodejs.org/)
-- **Google Gemini API Key** - [Get one free](https://ai.google.dev/)
-- **Git** - [Download](https://git-scm.com/)
-
-### 1️⃣ Clone the Repository
-
-```bash
-git clone https://github.com/yourusername/pdf_qa_rag.git
-cd pdf_qa_rag
-```
-
-### 2️⃣ Backend Setup
-
-#### Create Virtual Environment
 ```bash
 cd backend
 python -m venv venv
-
-# Activate virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-```
-
-#### Install Dependencies
-```bash
+venv\Scripts\activate          # macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
-```
 
-#### Configure Environment Variables
-Create a `.env` file in the `backend` directory:
-
-```env
-# 🔐 Required
-GOOGLE_API_KEY=your_gemini_api_key_here
-
-# 📁 Storage Paths
-VECTOR_DB_PATH=app/data/vector_db
-UPLOAD_DIR=app/data/uploaded_pdfs
-
-# 🌐 CORS Configuration
-ALLOWED_ORIGINS=http://localhost:5173
-
-# ⚙️ Optional (Defaults provided)
-CHUNK_SIZE=1000
-CHUNK_OVERLAP=200
-TOP_K=8
-MAX_CHAT_HISTORY=10
-REQUEST_TIMEOUT=30
-RATE_LIMIT_PER_MINUTE=60
-```
-
-#### Start Backend Server
-```bash
+cp env.example .env             # then set GEMINI_API_KEY
 uvicorn app.main:app --reload
 ```
 
-✅ Backend runs on: `http://localhost:8000`
-📚 API Docs: `http://localhost:8000/docs`
+Serves on `http://localhost:8000`; interactive docs at `/docs` in development.
 
-### 3️⃣ Frontend Setup
+### Frontend
 
-#### Install Dependencies
 ```bash
-cd ../frontend
+cd frontend
 npm install
-```
-
-#### Start Development Server
-```bash
+cp .env.example .env
 npm run dev
 ```
 
-✅ Frontend runs on: `http://localhost:5173`
+Serves on `http://localhost:5173`.
 
-Now open your browser and navigate to **`http://localhost:5173`** to start using StudyMind AI! 🎉
+### Tests
 
----
-
-## 📁 Project Structure
-
-```
-pdf_qa_rag/
-│
-├── backend/                          # 🔧 FastAPI Backend
-│   ├── app/
-│   │   ├── api/
-│   │   │   ├── routes/
-│   │   │   │   ├── ingest.py        # PDF upload, delete, reset endpoints
-│   │   │   │   ├── qa.py            # Question-answer endpoint
-│   │   │   │   ├── syllabus.py      # Syllabus context endpoint
-│   │   │   │   └── __init__.py
-│   │   │   ├── schemas/             # Pydantic request/response models
-│   │   │   │   ├── ingest.py
-│   │   │   │   ├── qa.py
-│   │   │   │   └── __init__.py
-│   │   │   └── __init__.py
-│   │   │
-│   │   ├── core/
-│   │   │   ├── config.py            # Settings & environment variables
-│   │   │   ├── logging.py           # Centralized logging config
-│   │   │   └── __init__.py
-│   │   │
-│   │   ├── services/
-│   │   │   ├── ingestion_service.py # PDF processing & chunk creation
-│   │   │   ├── rag_service.py       # Core RAG pipeline
-│   │   │   ├── gemini_llm.py        # Google Gemini API wrapper
-│   │   │   ├── llm_service.py       # LLM orchestration
-│   │   │   ├── syllabus_service.py  # Syllabus context management
-│   │   │   └── __init__.py
-│   │   │
-│   │   ├── rag/
-│   │   │   ├── chunking.py          # Text splitting & preprocessing
-│   │   │   ├── memory.py            # Chat history management
-│   │   │   ├── prompts.py           # RAG prompt templates
-│   │   │   ├── retriever.py         # Semantic search retriever
-│   │   │   └── __init__.py
-│   │   │
-│   │   ├── vectorstore/
-│   │   │   └── faiss_store.py       # FAISS vector database management
-│   │   │
-│   │   ├── data/
-│   │   │   ├── uploads/             # Temporary upload processing
-│   │   │   ├── uploaded_pdfs/       # Persisted original PDFs
-│   │   │   └── vector_db/           # FAISS indices
-│   │   │
-│   │   ├── utils/                   # Helper utilities
-│   │   └── main.py                  # FastAPI app initialization
-│   │
-│   ├── .env                         # Environment variables (create this)
-│   ├── requirements.txt             # Python dependencies
-│   └── README_BACKEND.md            # Backend-specific docs
-│
-├── frontend/                         # ⚛️ React Vite Application
-│   ├── src/
-│   │   ├── api/
-│   │   │   └── client.js            # Axios API client with interceptors
-│   │   │
-│   │   ├── components/
-│   │   │   ├── chat/
-│   │   │   │   ├── ChatInput.jsx    # Message input box with file attach
-│   │   │   │   ├── ChatWindow.jsx   # Messages display area
-│   │   │   │   ├── MessageBubble.jsx# Individual message UI
-│   │   │   │   ├── MobileChatDrawer.jsx # Mobile chat interface
-│   │   │   │   └── SourcesPanel.jsx # Citation/source display
-│   │   │   │
-│   │   │   ├── upload/
-│   │   │   │   └── UploadPDF.jsx    # Drag-drop PDF upload
-│   │   │   │
-│   │   │   ├── study/
-│   │   │   │   └── StudyPanel.jsx   # Marks & syllabus settings
-│   │   │   │
-│   │   │   ├── layout/
-│   │   │   │   ├── AppLayout.jsx    # Main layout wrapper
-│   │   │   │   ├── Navigation.jsx   # Top navigation bar
-│   │   │   │   ├── Footer.jsx       # Footer section
-│   │   │   │   └── ThemeToggle.jsx  # Dark/light mode switcher
-│   │   │   │
-│   │   │   └── ui/                  # Radix UI components
-│   │   │
-│   │   ├── context/
-│   │   │   ├── AppContext.jsx       # Global app state (PDFs, messages)
-│   │   │   └── ThemeContext.jsx     # Theme state management
-│   │   │
-│   │   ├── pages/
-│   │   │   ├── Home.jsx             # Main study interface
-│   │   │   ├── Tutorial.jsx         # Features & how-to guide
-│   │   │   └── NotFound.jsx         # 404 page
-│   │   │
-│   │   ├── lib/
-│   │   │   └── utils.js             # Utility functions
-│   │   │
-│   │   ├── styles/
-│   │   │   └── globals.css          # Global styles & animations
-│   │   │
-│   │   ├── App.jsx                  # Root component
-│   │   └── main.jsx                 # React entry point
-│   │
-│   ├── public/                      # Static assets (images, icons)
-│   ├── index.html                   # HTML entry point
-│   ├── package.json                 # JavaScript dependencies
-│   ├── vite.config.js               # Vite build configuration
-│   ├── tailwind.config.js           # Tailwind CSS theme config
-│   ├── jsconfig.json                # Path aliases
-│   ├── postcss.config.js            # PostCSS configuration
-│   └── components.json              # Component library meta
-│
-└── README.md                         # This file!
+```bash
+cd backend  && venv/Scripts/python.exe -m pytest      # 59 tests
+cd frontend && npm test                               # 41 tests
 ```
 
 ---
 
-## 🎯 API Endpoints
+## Configuration
 
-### 📤 Ingestion Endpoints (`/ingest`)
+Every setting is an environment variable; see `backend/env.example` for the full
+list. The ones that matter most:
 
-```http
-POST /ingest/
-```
-Upload PDF file(s) for processing
-- **Request**: Multipart form data with PDF file
-- **Response**: `{status: "processing", filename: "...", ...}`
-
-```http
-GET /ingest/status
-```
-Check upload processing status
-
-```http
-DELETE /ingest/delete/{filename}
-```
-Remove specific PDF from knowledge base
-
-```http
-DELETE /ingest/reset
-```
-Clear all PDFs and rebuild vectorstore
-
-### ❓ Question-Answer Endpoint (`/qa`)
-
-```http
-POST /qa/ask
-```
-Submit question and receive AI answer with citations
-```json
-{
-  "question": "What is photosynthesis?",
-  "marks": 5,
-  "include_syllabus": true
-}
-```
-**Response**:
-```json
-{
-  "answer": "Detailed answer...",
-  "sources": [
-    {
-      "filename": "biology.pdf",
-      "page": 42,
-      "text_snippet": "..."
-    }
-  ],
-  "citations": ["Page 42", "Page 45"]
-}
-```
-
-### 📚 Syllabus Endpoint (`/syllabus`)
-
-```http
-POST /syllabus/upload
-```
-Upload/update syllabus context for curriculum-aligned answers
+| Variable | Notes |
+|----------|-------|
+| `GEMINI_API_KEY` | Required. Answers cannot be generated without it. |
+| `JWT_SECRET` | **Required in production** and must be ≥32 characters. The server refuses to start without it. In development a local secret is generated for you. |
+| `DATA_DIR` | Where SQLite, uploads and per-user FAISS indexes live. Must point at persistent storage in production. |
+| `ALLOWED_ORIGINS` | Comma-separated CORS origins. |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | Per-IP limit on `/auth/*`. Defaults to 10. |
+| `EXPOSE_DOCS` | Interactive docs are closed in production unless this is set. |
 
 ---
 
-## 💡 Use Cases & Examples
+## Architecture
 
-### 📖 Case 1: Exam Preparation
 ```
-User uploads: Chemistry_Notes.pdf, Practice_Problems.pdf
-Query: "Explain Le Chatelier's Principle (5 marks)"
-Result: AI provides a structured 5-mark answer with exact
-         citations to the textbook
-```
-
-### 🔍 Case 2: Concept Clarification
-```
-User uploads: Physics_Textbook.pdf
-Query: "I don't understand quantum superposition. Can you explain simply?"
-Result: Simple, beginner-friendly explanation with visual metaphors
-         + citations from textbook
-```
-
-### 📚 Case 3: Quick Summarization
-```
-User uploads: 200-page History_Book.pdf
-Query: "Summarize the French Revolution in 3 marks"
-Result: Concise summary focusing on key events and dates
+API layer        routers + Pydantic schemas
+                 Depends(get_user_context) -> UserContext(user_id, storage)
+                      |
+Application      DocumentService · rag_service · mindmap_service · chat_history
+                 every call takes UserContext first
+                      |
+Retrieval        scored similarity search, metadata-filtered by document
+                      |
+Vector store     one FAISS index per user, bounded LRU + per-user lock
+                      |
+Persistence      SQLite (users, documents, chunks, chat, mind_maps)
+                 DATA_DIR/users/<id>/{uploads,index}
 ```
 
-### ✅ Case 4: Answer Verification
-```
-User answers question manually, then:
-Query: "Is my answer about mitosis correct? Here's my answer: ..."
-Result: AI checks against your study materials and provides feedback
-```
+Two seams carry identity and storage so that an unscoped query is a call-site
+error rather than something review has to catch:
+
+- **`UserContext`** — resolved once by the auth dependency, passed as the first
+  argument of every service function.
+- **`UserStorage`** — the only thing that turns a user id and a name into a path,
+  with containment checking built in.
+
+### Data model
+
+| Table | Purpose |
+|-------|---------|
+| `users` | Email/password and Google accounts |
+| `documents` | One row per upload: status, pages, chunk count, content hash |
+| `document_chunks` | Chunk ids per document — enables incremental index deletion |
+| `chat_sessions` / `chat_messages` | Saved conversations with their citations |
+| `mind_maps` | Generated maps |
+| `user_preferences` | Per-account defaults |
+
+Schema changes go through the append-only `MIGRATIONS` list in
+`app/db/auth_db.py` and are applied on startup.
 
 ---
 
-## 🔑 Why Google Gemini?
+## Document lifecycle
 
-StudyMind AI leverages **Google Gemini Pro**, a cutting-edge multimodal LLM, because it:
-
-✅ **Understands Context** - Deeply comprehends academic text and nuance
-✅ **Accurate Citations** - Enables precise RAG-driven fact grounding
-✅ **Fast Responses** - Sub-second latency for seamless user experience
-✅ **Cost-Effective** - Generous free tier for students and researchers
-✅ **Multimodal** - Future-ready for image and document understanding
-✅ **Reliable** - Backed by Google's infrastructure and safety measures
-
----
-
-## 📊 Performance & Features
-
-| Feature | Capability |
-|---------|-----------|
-| **PDF Upload Speed** | Multiple files in parallel |
-| **Vector Search** | Semantic similarity with FAISS |
-| **Response Time** | < 3 seconds average |
-| **Context Window** | 15 previous messages |
-| **Max File Size** | 50MB per document |
-| **Supported Formats** | PDF, DOCX |
-| **Concurrent Users** | Unlimited (server dependent) |
-| **Mobile Support** | Full responsive design |
-| **Dark Mode** | ✨ Fully optimized |
-
----
-
-## 🛠️ Development & Customization
-
-### Backend Configuration
-
-Modify `backend/app/core/config.py` to customize:
-
-```python
-CHUNK_SIZE = 1000              # Token size per document chunk
-CHUNK_OVERLAP = 200            # Overlap between chunks
-TOP_K = 8                      # Number of top results to retrieve
-MAX_CHAT_HISTORY = 10          # Messages to retain in context
-MODEL_TEMPERATURE = 0.7        # Creativity level (0=factual, 1=creative)
+```
+queued -> parsing -> embedding -> ready
+   |         |           |
+   +---------+-----------+------> failed -> retry -> queued
 ```
 
-### Frontend Theming
+Every transition is persisted on the document row. Status is never inferred from
+whether a file or directory happens to exist, so it survives a restart.
 
-Edit `frontend/tailwind.config.js` to customize colors:
+Deleting one document removes only its own vectors, by recorded chunk id — the
+rest of the library is not re-parsed or re-embedded. Uploading identical content
+is detected by SHA-256 and skipped rather than indexed twice.
 
-```js
-colors: {
-  primary: '#00ff88',          // Neon green
-  dark: '#0f0f0f',             // Dark background
-  // ... more colors
-}
+---
+
+## Answer generation
+
+`POST /qa/ask` returns JSON. `POST /qa/ask/stream` returns Server-Sent Events
+carrying the pipeline's real stages:
+
+```
+preparing -> retrieving -> analyzing -> generating -> validating -> completed
 ```
 
-### Add Custom Prompts
+Both endpoints drain the same generator, so there is one pipeline and the two
+cannot drift apart.
 
-Edit `backend/app/rag/prompts.py` to modify how answers are generated
-
----
-
-## 🤝 Contributing
-
-We ❤️ contributions! Whether you're fixing bugs, adding features, or improving documentation, your help makes StudyMind AI better for everyone.
-
-### Getting Started with Contributions
-
-1. **Fork the repository**
-   ```bash
-   git clone https://github.com/yourusername/pdf_qa_rag.git
-   ```
-
-2. **Create a feature branch**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-
-3. **Make your changes**
-   - Write clean, well-documented code
-   - Follow existing code style and conventions
-   - Add comments for complex logic
-
-4. **Commit your changes**
-   ```bash
-   git commit -m "Add amazing feature"
-   ```
-
-5. **Push to your fork**
-   ```bash
-   git push origin feature/amazing-feature
-   ```
-
-6. **Open a Pull Request**
-   - Provide a clear description of changes
-   - Link any related issues
-   - Include screenshots if UI-related
-
-### Contribution Ideas
-
-- 🎨 Improve UI/UX design
-- 🐛 Bug fixes and optimizations
-- 📝 Documentation improvements
-- 🧪 Write tests and test coverage
-- 💬 Add language support/translations
-- 🔌 New LLM provider integrations
-- 📊 Analytics and usage tracking
-- 🎓 Academic feature enhancements
+**Progress is never faked.** A stage is emitted only after the work it names has
+completed, and counts shown in the UI (`Found 6 relevant passages`) come from the
+pipeline rather than a template. There is no percentage anywhere, because the
+backend has no measurable one to report. Upload progress *is* determinate, since
+bytes transferred is a real quantity.
 
 ---
 
-## 🐛 Troubleshooting
+## Deployment
 
-### Common Issues
+### Backend (Render)
 
-**Q: "GOOGLE_API_KEY not found"**
-- Ensure `.env` file is in `backend/` directory
-- Check API key is valid at [Google AI Studio](https://ai.google.dev/)
+`backend/render.yaml` is a working blueprint. Two things it must have:
 
-**Q: "FAISS index not building"**
-- Verify PDFs were uploaded successfully
-- Check `VECTOR_DB_PATH` has write permissions
-- Ensure sufficient disk space available
+- `rootDir: backend` — the app package is not importable from the repo root.
+- A **persistent disk** mounted at `DATA_DIR`. Without one, every deploy destroys
+  all accounts, documents, chats and mind maps.
 
-**Q: "CORS errors in browser"**
-- Verify `ALLOWED_ORIGINS` in `.env` matches your frontend URL
-- Default is `http://localhost:5173`
+`sentence-transformers` pulls PyTorch, which sets the hosting floor: a 512MB
+instance will OOM. Either provision ≥2GB with a single worker, or swap
+`EMBEDDING_MODEL` for a hosted embedding API.
 
-**Q: "PDF not processing"**
-- Check file size (max 50MB)
-- Ensure PDF is text-extractable (not image-based)
-- Try re-uploading with a fresh file
+### Frontend (Vercel)
+
+`frontend/vercel.json` already rewrites all paths to `index.html`, which is what
+client-side routing needs. Set `VITE_API_URL` to the backend URL.
 
 ---
 
-## 📈 Future Roadmap
+## Security notes
 
-We're constantly improving StudyMind AI! Upcoming features include:
+- Passwords are bcrypt-hashed; Google sign-in verifies the ID token server-side
+  against a server-held client id.
+- Every route resolves documents, chats and maps by id **scoped to the caller**.
+  `tests/test_tenancy.py` asserts this across every route and runs in CI.
+- Uploads are validated by extension and streamed with a size cap; syllabus files
+  are additionally checked by magic bytes, not the declared content type.
+- `backend/app/data/` is gitignored in full, including the development JWT secret.
 
-- 🗂️ **Cloud Storage** - AWS S3/Google Drive integration for document backups
-- 🗣️ **Voice Tutoring** - Ask questions verbally, get spoken answers
-- 🌐 **Collaborative Learning** - Study groups with shared PDFs and notes
-- 🎓 **MCQ Generation** - Auto-generate practice questions from materials
-- 📊 **Progress Tracking** - Analytics on study habits and improvement
-- 🌍 **Multi-Language** - Support for non-English study materials
-- 🔐 **Authentication** - User accounts and progress persistence
-- 📱 **Mobile App** - Native iOS/Android applications
+### Known limitations
 
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-MIT License allows free, private, commercial use with proper attribution.
+- Access tokens are long-lived and stored in `localStorage`; there is no refresh
+  rotation or server-side revocation yet, so logging out clears the client only.
+- Rate limiting is in-process. It must move to Redis if the service is ever run
+  with more than one worker.
+- Chapter/topic mind maps read the first 24,000 characters of a document to
+  derive its outline, so very long books may produce a coarse chapter list.
 
 ---
 
-## 🙏 Acknowledgments
+## License
 
-- **Google Gemini API** - For the powerful LLM backbone
-- **LangChain** - For RAG orchestration framework
-- **FAISS** - For fast vector similarity search
-- **React & Vite** - For the modern frontend framework
-- **FastAPI** - For the elegant backend framework
-- **All contributors** - For making this project better
-
----
-
-## 📞 Get Support
-
-- 📖 **Documentation**: Check our [Wiki](../../wiki)
-- 🐛 **Report Issues**: [GitHub Issues](../../issues)
-- 💬 **Discussions**: [GitHub Discussions](../../discussions)
-- 📧 **Email**: [Contact Us](mailto:support@studymindai.dev)
-
----
-
-<div align="center">
-
-### Made with ❤️ for students everywhere
-
-**Help others discover StudyMind AI! Please consider starring ⭐ this repository.**
-
-[⬆ Back to Top](#📚-studymind-ai-intelligent-pdf-learning-assistant)
-
-</div>
-
-
-pdf chli gai tutorial per jake study tool per wapas ane ke bad.
+MIT

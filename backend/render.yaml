@@ -1,0 +1,38 @@
+# Render Blueprint.
+#
+# rootDir is required: the FastAPI app lives in backend/app, so from the repo
+# root neither requirements.txt nor the `app` package is importable. Without it
+# the service fails to build and then fails to boot.
+services:
+  - type: web
+    name: pdf-rag-api
+    runtime: python
+    plan: standard          # sentence-transformers loads PyTorch; starter OOMs
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # One worker: each would load its own copy of the embedding model.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health
+    disk:
+      # SQLite, uploads and per-user FAISS indexes live here. Without a disk
+      # every deploy destroys all accounts, documents, chats and mind maps.
+      name: studymind-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: DATA_DIR
+        value: /var/data
+      - key: ENVIRONMENT
+        value: production
+      - key: AUTH_REQUIRED
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true     # Render generates once and keeps it stable
+      - key: GEMINI_API_KEY
+        sync: false             # set in the dashboard; never in the repo
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false             # your Vercel URL, comma-separated

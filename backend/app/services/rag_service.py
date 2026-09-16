@@ -1,17 +1,53 @@
-# this is the main RAG (Retrieval Augmented Generation) pipeline
-# it finds relevant content from PDFs and uses AI to answer questions
+"""Retrieval-augmented answering.
+
+The pipeline is written as a generator that yields a typed event at each real
+boundary it crosses. The streaming endpoint forwards those events; the JSON
+endpoint drains the same generator, so there is one pipeline rather than two and
+no stage can be reported that did not actually happen.
+
+Ranking change from the previous version: lexical overlap is now blended into
+the score instead of being used as an exclusion filter. The old behaviour
+discarded any chunk below a fixed word-overlap threshold, which threw away
+correctly-retrieved passages that answered the question in different words.
+"""
+
 import logging
+import os
+import re
 import time
+from typing import Iterator, Optional
 
 from app.core.config import settings
+from app.core.context import UserContext
 from app.rag.prompts import RAG_PROMPT
-from app.rag.retriever import get_retriever
 from app.services.gemini_llm import generate_text
+from app.vectorstore import faiss_store
 
 logger = logging.getLogger(__name__)
 
+FOLLOW_UP_REFERENCE_PATTERNS = (
+    r"\bcontinue\b",
+    r"\bmore\b",
+    r"\bthis\b",
+    r"\bit\b",
+    r"\bthat\b",
+    r"\bthe above\b",
+    r"\bthose\b",
+    r"\bthese\b",
+)
 
-# pulls out important words from a piece of text
+STANDALONE_QUESTION_PREFIXES = (
+    "what ", "who ", "when ", "where ", "why ", "how ",
+    "define ", "describe ", "explain ", "list ", "compare ", "differentiate ",
+)
+
+
+# --- query construction (behaviour preserved) -------------------------------
+
+def _normalize_text(value: str) -> str:
+    return " ".join((value or "").split()).strip()
+
+
 def extract_keywords(text: str) -> set:
     words = set()
     for word in text.lower().split():
@@ -21,69 +57,134 @@ def extract_keywords(text: str) -> set:
     return words
 
 
-# checks how similar a document is to the question by comparing keywords
-def semantic_similarity_score(doc_content: str, question_keywords: set) -> float:
+def _looks_like_context_dependent_followup(question: str) -> bool:
+    normalized = _normalize_text(question).lower()
+    if not normalized:
+        return False
+    keyword_count = len(extract_keywords(normalized))
+    if len(normalized) <= 16:
+        return True
+    if any(re.search(p, normalized) for p in FOLLOW_UP_REFERENCE_PATTERNS):
+        return True
+    if normalized.startswith(STANDALONE_QUESTION_PREFIXES) and keyword_count >= 3:
+        return False
+    return keyword_count <= 2
+
+
+def _recent_user_topic(chat_history: Optional[list]) -> str:
+    if not chat_history:
+        return ""
+    for msg in reversed(chat_history):
+        if msg.get("role") != "user":
+            continue
+        content = _normalize_text(msg.get("content", ""))
+        if len(content) < 12 or _looks_like_context_dependent_followup(content):
+            continue
+        return content
+    for msg in reversed(chat_history):
+        if msg.get("role") == "user":
+            return _normalize_text(msg.get("content", ""))
+    return ""
+
+
+def build_search_query(
+    question: str, syllabus_context: str = "", chat_history: Optional[list] = None
+) -> str:
+    normalized_question = _normalize_text(question)
+    parts = []
+    if syllabus_context and len(syllabus_context.strip()) > 20:
+        parts.append(syllabus_context.strip()[:100])
+    if _looks_like_context_dependent_followup(normalized_question):
+        prior = _recent_user_topic(chat_history)
+        if prior:
+            parts.append(prior)
+    parts.append(normalized_question)
+    return " ".join(p for p in parts if p).strip()
+
+
+# --- scoring ----------------------------------------------------------------
+
+def lexical_overlap(doc_content: str, question_keywords: set) -> float:
     if not question_keywords:
         return 0.0
-
-    doc_keywords = extract_keywords(doc_content)
-    overlap = len(question_keywords & doc_keywords)
-    return overlap / len(question_keywords)
+    return len(question_keywords & extract_keywords(doc_content)) / len(question_keywords)
 
 
-# sorts documents so the most relevant ones come first
-def rank_documents(docs: list, question: str) -> list:
-    if not docs:
-        return docs
+def _semantic_score(distance: float) -> float:
+    """Convert FAISS L2 distance over normalised vectors into a 0-1 similarity.
 
-    question_keywords = extract_keywords(question)
-    scored_docs = [
-        (doc, semantic_similarity_score(doc.page_content, question_keywords))
-        for doc in docs
-    ]
-    scored_docs.sort(key=lambda x: x[1], reverse=True)
-
-    filtered_docs = [
-        doc for doc, score in scored_docs
-        if score >= settings.RETRIEVER_MIN_SCORE
-    ]
-    return filtered_docs or [doc for doc, _ in scored_docs[: max(1, min(3, len(scored_docs)))]]
+    With unit-length embeddings, d^2 = 2 - 2*cos, so cos = 1 - d^2/2.
+    """
+    try:
+        similarity = 1.0 - (float(distance) ** 2) / 2.0
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(1.0, similarity))
 
 
-def _deduplicate_docs(docs: list) -> list:
-    unique_docs = []
-    seen = set()
-    for doc in docs:
-        key = (
-            doc.metadata.get("chunk_id"),
-            doc.metadata.get("page"),
-            doc.page_content[:200],
+def blend_and_rank(scored_docs: list, question: str) -> list:
+    """Rank by semantic score with lexical overlap as a tie-breaker, never a filter."""
+    if not scored_docs:
+        return []
+    keywords = extract_keywords(question)
+    weight = max(0.0, min(1.0, settings.LEXICAL_WEIGHT))
+
+    ranked = []
+    for doc, distance in scored_docs:
+        semantic = _semantic_score(distance)
+        lexical = lexical_overlap(doc.page_content, keywords)
+        combined = (1.0 - weight) * semantic + weight * lexical
+        ranked.append((doc, combined, semantic, lexical))
+
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    if logger.isEnabledFor(logging.DEBUG):
+        for doc, combined, semantic, lexical in ranked[:5]:
+            logger.debug(
+                "rank combined=%.3f semantic=%.3f lexical=%.3f page=%s",
+                combined, semantic, lexical, doc.metadata.get("page"),
+            )
+    return [doc for doc, _, _, _ in ranked]
+
+
+def _deduplicate(docs_list: list) -> list:
+    seen, unique = set(), []
+    for doc in docs_list:
+        key = doc.metadata.get("chunk_id") or (
+            doc.metadata.get("source"), doc.metadata.get("page"), doc.page_content[:200]
         )
         if key in seen:
             continue
         seen.add(key)
-        unique_docs.append(doc)
-    return unique_docs
+        unique.append(doc)
+    return unique
 
 
-def _build_context(top_docs: list) -> str:
-    context_parts = []
-    current_size = 0
+# --- context ----------------------------------------------------------------
 
+def _context_budget(marks: int) -> int:
+    """Longer answers genuinely receive more evidence, not just a longer prompt."""
+    base = settings.MAX_CONTEXT_CHARS
+    if marks <= 3:
+        return int(base * 0.55)
+    if marks <= 5:
+        return int(base * 0.8)
+    return base
+
+
+def _build_context(top_docs: list, budget: int) -> str:
+    parts, used = [], 0
+    per_doc = max(400, budget // max(1, len(top_docs)))
     for i, doc in enumerate(top_docs, 1):
-        page_info = doc.metadata.get("page", "N/A")
-        source_file = doc.metadata.get("source", "Unknown")
-        content = " ".join(doc.page_content.split())
-        remaining = max(settings.MAX_CONTEXT_CHARS - current_size, 0)
+        remaining = budget - used
         if remaining <= 0:
             break
-
-        limited_content = content[: min(850, remaining)]
-        part = f"[Source {i} | File: {source_file} | Page: {page_info}]\n{limited_content}"
-        context_parts.append(part)
-        current_size += len(part) + 8
-
-    return "\n\n---\n\n".join(context_parts)
+        content = " ".join(doc.page_content.split())[: min(per_doc, remaining)]
+        part = "[Source {} | File: {} | Page: {}]\n{}".format(
+            i, doc.metadata.get("source", "Unknown"), doc.metadata.get("page", "N/A"), content
+        )
+        parts.append(part)
+        used += len(part) + 8
+    return "\n\n---\n\n".join(parts)
 
 
 def _page_number(doc) -> int:
@@ -95,88 +196,175 @@ def _page_number(doc) -> int:
     return 1
 
 
-# this is the main function that answers a student's question using their uploaded PDFs
-def run_rag(question: str, vectorstore, syllabus_context: str = "", marks: int = 3, chat_history: list = None):
-    started_at = time.perf_counter()
-    desired_k = 4 if marks <= 3 else 5 if marks <= 5 else settings.TOP_K
-    retriever = get_retriever(vectorstore, desired_k=desired_k)
+def _build_sources(top_docs: list) -> list[dict]:
+    """Citations now name the document they came from, not just a page number."""
+    sources = []
+    for doc in top_docs:
+        meta = doc.metadata
+        sources.append(
+            {
+                "document_id": meta.get("document_id"),
+                "document_name": os.path.basename(str(meta.get("source", "")))
+                or "Unknown document",
+                "page": _page_number(doc),
+                "chunk_id": meta.get("chunk_id"),
+                "text": doc.page_content[:280],
+            }
+        )
+    return sources
 
-    search_query = question
-    if syllabus_context and len(syllabus_context) > 20:
-        search_query = f"{syllabus_context[:100]} {question}"
+
+# --- retrieval --------------------------------------------------------------
+
+def _retrieve(index, query: str, k: int, document_ids: Optional[list[str]]):
+    """Fetch scored candidates, restricting to selected documents during search."""
+    fetch_k = max(k * 3, settings.RETRIEVER_FETCH_K)
+    search_filter = None
+    if document_ids:
+        allowed = set(document_ids)
+        # LangChain FAISS accepts a callable filter over metadata.
+        search_filter = lambda meta: meta.get("document_id") in allowed  # noqa: E731
+
+    try:
+        return index.similarity_search_with_score(query, k=fetch_k, filter=search_filter)
+    except TypeError:
+        # Older langchain-community rejects a callable filter.
+        results = index.similarity_search_with_score(query, k=fetch_k)
+        if not document_ids:
+            return results
+        allowed = set(document_ids)
+        return [(d, s) for d, s in results if d.metadata.get("document_id") in allowed]
+
+
+# --- pipeline ---------------------------------------------------------------
+
+def run_rag_stages(
+    ctx: UserContext,
+    question: str,
+    *,
+    syllabus_context: str = "",
+    marks: int = 3,
+    chat_history: Optional[list] = None,
+    document_ids: Optional[list[str]] = None,
+    document_count: int = 0,
+) -> Iterator[dict]:
+    """Yield a stage event at each real boundary, then a final result event."""
+    started = time.perf_counter()
+
+    yield {"stage": "preparing"}
+    search_query = build_search_query(question, syllabus_context, chat_history)
+    desired_k = 4 if marks <= 3 else 5 if marks <= 5 else settings.TOP_K
+
+    yield {
+        "stage": "retrieving",
+        "document_count": document_count,
+        "scope": "selected" if document_ids else "all",
+    }
+    index = faiss_store.load_index(ctx.storage)
+    if index is None:
+        yield {
+            "stage": "failed",
+            "error": "No indexed documents yet. Upload a document first.",
+            "code": "no_index",
+        }
+        return
 
     retrieval_started = time.perf_counter()
-    docs = retriever.invoke(search_query)
-    logger.info("Retriever returned %s docs in %.2fs", len(docs), time.perf_counter() - retrieval_started)
+    scored = _retrieve(index, search_query, desired_k, document_ids)
+    logger.info(
+        "Retrieved %s candidates in %.2fs for user %s",
+        len(scored), time.perf_counter() - retrieval_started, ctx.user_id,
+    )
 
-    if not docs:
-        return {
-            "answer": f"I couldn't find relevant information about '{question}' in the uploaded documents.",
-            "pages": [],
-            "sources": [],
-            "error": True
+    if not scored:
+        yield {
+            "stage": "failed",
+            "error": "I could not find anything relevant in the selected material.",
+            "code": "no_match",
         }
+        return
 
-    ranked_docs = _deduplicate_docs(rank_documents(docs, question))
-    if not ranked_docs:
-        return {
-            "answer": f"I couldn't find relevant information about '{question}' in the uploaded documents after ranking.",
-            "pages": [],
-            "sources": [],
-            "error": True
-        }
+    yield {"stage": "analyzing", "candidate_count": len(scored)}
+    ranked = _deduplicate(blend_and_rank(scored, f"{search_query} {question}".strip()))
+    top_docs = ranked[:desired_k]
+    if not top_docs:
+        yield {"stage": "failed", "error": "No usable passages found.", "code": "no_match"}
+        return
 
-    top_docs = ranked_docs[: settings.TOP_K]
-    context = _build_context(top_docs)
+    passage_pages = sorted({_page_number(d) for d in top_docs})
+    yield {
+        "stage": "generating",
+        "passage_count": len(top_docs),          # real length of top_docs
+        "pages": passage_pages,
+        "documents": sorted({
+            os.path.basename(str(d.metadata.get("source", ""))) for d in top_docs
+        } - {""}),
+    }
 
-    formatted_chat_history = "No previous conversation."
-    if chat_history and len(chat_history) > 0:
-        recent_history = chat_history[-settings.MAX_CHAT_HISTORY:] if len(chat_history) > settings.MAX_CHAT_HISTORY else chat_history
-        history_parts = []
-        for msg in recent_history:
+    context = _build_context(top_docs, _context_budget(marks))
+
+    formatted_history = "No previous conversation."
+    if chat_history:
+        recent = chat_history[-settings.MAX_CHAT_HISTORY:]
+        lines = []
+        for msg in recent:
             role = "Student" if msg.get("role") == "user" else "Tutor"
             content = msg.get("content", "")
-            content = content[:300] + "..." if len(content) > 300 else content
-            history_parts.append(f"{role}: {content}")
-        formatted_chat_history = "\n".join(history_parts)
-
-    formatted_syllabus = syllabus_context.strip() if syllabus_context else "No syllabus provided."
+            lines.append(f"{role}: {content[:300]}{'...' if len(content) > 300 else ''}")
+        formatted_history = "\n".join(lines)
 
     prompt = RAG_PROMPT.format(
-        syllabus_context=formatted_syllabus,
+        syllabus_context=(syllabus_context or "").strip() or "No syllabus provided.",
         marks=marks,
         context=context,
         question=question,
-        chat_history=formatted_chat_history
+        chat_history=formatted_history,
     )
 
     try:
-        logger.info("Sending RAG request with %s chars context and marks=%s", len(context), marks)
-        response = generate_text(prompt)
-        if not response:
-            raise ValueError("Empty response from Gemini")
-    except Exception as e:
-        logger.error("Error generating response: %s", e)
-        return {
-            "answer": f"Error generating response. Please try again: {str(e)[:100]}",
-            "pages": [],
-            "sources": [],
-            "error": True
+        logger.info("Generating answer: %s context chars, marks=%s", len(context), marks)
+        answer = generate_text(prompt)
+        if not answer:
+            raise ValueError("Empty response from the model")
+    except Exception:
+        # The provider message can contain request details; keep it out of the UI.
+        logger.exception("Answer generation failed for user %s", ctx.user_id)
+        yield {
+            "stage": "failed",
+            "error": "The answer service is unavailable right now. Please try again.",
+            "code": "llm_error",
         }
+        return
 
-    pages = sorted({str(_page_number(doc)) for doc in top_docs}, key=int)
-    sources = [
-        {
-            "page": _page_number(doc),
-            "text": doc.page_content[:200]
-        }
-        for doc in top_docs
-    ]
+    yield {"stage": "validating"}
+    sources = _build_sources(top_docs)
 
-    logger.info("RAG completed in %.2fs", time.perf_counter() - started_at)
-    return {
-        "answer": response,
-        "pages": pages,
-        "sources": sources,
-        "error": False
+    logger.info("RAG completed in %.2fs", time.perf_counter() - started)
+    yield {
+        "stage": "completed",
+        "result": {
+            "answer": answer,
+            "pages": [str(p) for p in passage_pages],
+            "sources": sources,
+            "error": False,
+        },
     }
+
+
+def run_rag(ctx: UserContext, question: str, **kwargs) -> dict:
+    """Drain the stage generator and return the final payload (non-streaming path)."""
+    final = None
+    for event in run_rag_stages(ctx, question, **kwargs):
+        if event.get("stage") == "completed":
+            final = event["result"]
+        elif event.get("stage") == "failed":
+            return {
+                "answer": event.get("error", "Unable to answer."),
+                "pages": [],
+                "sources": [],
+                "error": True,
+                "code": event.get("code"),
+            }
+    if final is None:
+        return {"answer": "Unable to answer.", "pages": [], "sources": [], "error": True}
+    return final

@@ -1,228 +1,196 @@
-# this file handles uploading PDFs, processing them, and deleting them
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
-import os
-import shutil
+"""Document upload and lifecycle endpoints.
+
+All routes resolve documents by id scoped to the caller. Processing runs in a
+bounded thread pool; status lives on the document row rather than in process
+memory, so it survives a restart and is correct under more than one worker.
+"""
+
 import logging
-from urllib.parse import unquote
 from concurrent.futures import ThreadPoolExecutor
-from app.services.ingestion_service import ingest_pdf
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+
 from app.core.config import settings
-from app.utils.file_utils import ensure_safe_child_path, sanitize_filename, save_upload_file
-import threading
+from app.core.context import UserContext
+from app.core.storage import UnsafePathError
+from app.api.routes.auth import get_user_context
+from app.services import document_service as docs
+from app.services.ingestion_service import (
+    IngestionError,
+    hash_file,
+    ingest_document,
+    remove_document,
+    reset_user_documents,
+)
+from app.utils.file_utils import sanitize_filename, save_upload_file
 
 logger = logging.getLogger(__name__)
-# lock to prevent race conditions when modifying INGESTION_STATUS
-_status_lock = threading.Lock()
-# lock to prevent concurrent vectorstore modifications
-_vectorstore_lock = threading.Lock()
 
-# creating a router for all PDF ingestion related endpoints
 router = APIRouter(prefix="/ingest", tags=["Document Ingestion"])
 
-# folder where uploaded PDFs are stored
-UPLOAD_DIR = "app/data/uploads"
-# create the folder if it doesnt exist
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# thread pool limits PDF processing to 2 at a time so we dont overload the system
-# with a reasonable queue size to prevent unlimited queueing
-executor = ThreadPoolExecutor(
-    max_workers=2, 
-    thread_name_prefix="pdf_ingest_",
-    max_queue_size=10  # limit queue to prevent memory bloat
-) if hasattr(ThreadPoolExecutor, 'max_queue_size') else ThreadPoolExecutor(
-    max_workers=2,
-    thread_name_prefix="pdf_ingest_"
-)
-
-# keeps track of which PDFs are processing, completed, or failed
-INGESTION_STATUS = {}
+# Bounded so a burst of uploads cannot exhaust memory. Per-user index locks live
+# in the vector store, so one user's ingest no longer blocks another's.
+_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ingest_")
 
 
-# this runs in the background to process a PDF without blocking the user
-def ingest_background(file_path: str, filename: str):
-    # check if already processing (with thread safety)
-    with _status_lock:
-        if (
-            filename in INGESTION_STATUS
-            and INGESTION_STATUS[filename]["status"] == "processing"
-        ):
-            return
-        
-        # mark the file as currently being processed
-        INGESTION_STATUS[filename] = {
-            "status": "processing",
-            "pages": 0,
-            "chunks": 0,
-            "error": None,
-        }
-
+def _process(ctx: UserContext, document_id: str) -> None:
     try:
-        # run the actual PDF processing in a separate thread with vectorstore lock
-        with _vectorstore_lock:
-            future = executor.submit(ingest_pdf, file_path)
-            # wait for it to finish and get the result (with timeout to prevent hanging)
-            result = future.result(timeout=300)  # 5 minute timeout
-
-        # update status to completed with page and chunk counts (with lock)
-        with _status_lock:
-            INGESTION_STATUS[filename].update({
-                "status": "completed",
-                "pages": result.get("pages", 0),
-                "chunks": result.get("chunks", 0),
-            })
-        logger.info(f"Successfully processed {filename}: {result.get('pages', 0)} pages, {result.get('chunks', 0)} chunks")
-
-    except Exception as e:
-        # if something went wrong, mark it as failed with the error message (with lock)
-        error_msg = str(e)
-        logger.error(f"Error processing PDF {filename}: {error_msg}")
-        with _status_lock:
-            if filename in INGESTION_STATUS:
-                INGESTION_STATUS[filename].update({
-                    "status": "failed",
-                    "error": error_msg,
-                })
+        ingest_document(ctx, document_id)
+    except IngestionError as exc:
+        logger.info("Ingestion rejected document %s: %s", document_id, exc)
+    except Exception:
+        logger.exception("Unhandled ingestion failure for %s", document_id)
 
 
-# rebuilds the search database after a PDF is deleted (runs in background)
-def rebuild_vectorstore_background():
-    try:
-        # use lock to prevent concurrent vectorstore modifications
-        with _vectorstore_lock:
-            from app.services.ingestion_service import rebuild_vectorstore_from_uploads
-            rebuild_vectorstore_from_uploads()
-            logger.info("Background vectorstore rebuild completed")
-    except Exception as e:
-        logger.error(f"Background rebuild failed: {e}")
+def _schedule(ctx: UserContext, document_id: str) -> None:
+    _executor.submit(_process, ctx, document_id)
 
 
-# API endpoint to upload a PDF file
 @router.post("/")
-async def ingest(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    # validate file exists
+async def upload_document(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    ctx: UserContext = Depends(get_user_context),
+):
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
-    
-    # validate file extension (case-insensitive)
-    safe_filename = sanitize_filename(file.filename)
-    file_lower = safe_filename.lower()
-    file_ext = os.path.splitext(file_lower)[1]
-    if file_ext not in settings.ALLOWED_FILE_EXTENSIONS:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Only {', '.join(settings.ALLOWED_FILE_EXTENSIONS)} files allowed"
-        )
+
+    safe_name = sanitize_filename(file.filename)  # validates extension too
     if file.content_type and file.content_type not in settings.ALLOWED_FILE_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+
+    if docs.count_documents(ctx) >= settings.MAX_DOCUMENTS_PER_USER:
         raise HTTPException(
-            status_code=400,
-            detail="Unsupported file type"
+            status_code=409,
+            detail=f"Document limit reached ({settings.MAX_DOCUMENTS_PER_USER}). Delete one first.",
         )
-    # save the uploaded file to disk
-    file_path = ensure_safe_child_path(UPLOAD_DIR, safe_filename)
+
     try:
-        save_upload_file(file, file_path)
-    except Exception as e:
-        logger.error(f"Failed to save file {safe_filename}: {e}")
-        if isinstance(e, HTTPException):
-            raise
+        destination = ctx.storage.upload_path(safe_name)
+    except UnsafePathError:
+        raise HTTPException(status_code=400, detail="Invalid file name")
+
+    try:
+        size = save_upload_file(file, str(destination))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to store upload for %s", ctx)
         raise HTTPException(status_code=500, detail="Failed to save file")
 
-    # set initial status to pending (so frontend knows we got the file) - use lock for thread safety
-    with _status_lock:
-        if safe_filename not in INGESTION_STATUS or INGESTION_STATUS[safe_filename]["status"] not in ("pending", "processing"):
-            INGESTION_STATUS[safe_filename] = {
-                "status": "pending",
-                "pages": 0,
-                "chunks": 0,
-                "error": None,
-            }
+    content_hash = hash_file(destination)
 
-    # start processing the PDF in the background so we can respond immediately
-    background_tasks.add_task(
-        ingest_background,
-        file_path,
-        safe_filename
+    # Identical content already indexed for this user: link, do not re-embed.
+    duplicate = docs.find_by_hash(ctx, content_hash)
+    if duplicate and duplicate["stored_name"] != safe_name:
+        try:
+            destination.unlink()
+        except OSError:
+            pass
+        return {
+            "status": "duplicate",
+            "document": duplicate,
+            "message": f"Already indexed as {duplicate['original_name']}.",
+        }
+
+    record = docs.create_document(
+        ctx,
+        original_name=file.filename.strip()[:255],
+        stored_name=safe_name,
+        byte_size=size,
+        content_hash=content_hash,
     )
 
-    # tell the frontend we got the file and started processing
-    return {
-        "status": "accepted",
-        "filename": safe_filename,
-        "message": "PDF upload received. Processing started."
-    }
+    background_tasks.add_task(_schedule, ctx, record["id"])
+    return {"status": "accepted", "document": record}
 
 
-# API endpoint to check the processing status of uploaded files
+@router.get("/documents")
+async def list_documents(ctx: UserContext = Depends(get_user_context)):
+    return {"documents": docs.list_documents(ctx)}
+
+
 @router.get("/status")
-async def ingest_status(filename: str | None = None):
-    # use lock to ensure consistent reads
-    with _status_lock:
-        # if a specific filename is given, return just that files status
-        if filename:
-            decoded = sanitize_filename(unquote(filename))
-            return INGESTION_STATUS.get(decoded, {"status": "not_found"})
-        # otherwise return all statuses (make a copy to avoid external modifications)
-        return dict(INGESTION_STATUS)
+async def ingest_status(
+    filename: str | None = None,
+    ctx: UserContext = Depends(get_user_context),
+):
+    """Legacy status shape, keyed by stored name.
+
+    Retained so an older frontend keeps working; new clients should use
+    /ingest/documents, which returns ids.
+    """
+    records = docs.list_documents(ctx)
+    payload = {
+        r["stored_name"]: {
+            "status": r["status"],
+            "pages": r["pages"],
+            "chunks": r["chunk_count"],
+            "error": r["error"],
+            "document_id": r["id"],
+        }
+        for r in records
+    }
+    if filename:
+        try:
+            key = sanitize_filename(filename)
+        except HTTPException:
+            return {"status": "not_found"}
+        return payload.get(key, {"status": "not_found"})
+    return payload
 
 
-# API endpoint to delete a specific PDF
+@router.post("/{document_id}/retry")
+async def retry_document(
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    ctx: UserContext = Depends(get_user_context),
+):
+    record = docs.get_document(ctx, document_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if record["status"] == "ready":
+        return {"status": "ready", "document": record}
+
+    docs.set_status(document_id, "queued")
+    background_tasks.add_task(_schedule, ctx, document_id)
+    return {"status": "accepted", "document": docs.get_document(ctx, document_id)}
+
+
+@router.delete("/reset")
+async def reset_documents(ctx: UserContext = Depends(get_user_context)):
+    removed = reset_user_documents(ctx)
+    return {"status": "reset", "removed": removed}
+
+
+@router.delete("/{document_id}")
+async def delete_document(
+    document_id: str,
+    ctx: UserContext = Depends(get_user_context),
+):
+    if not remove_document(ctx, document_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"status": "deleted", "id": document_id}
+
+
 @router.delete("/delete/{filename}")
-async def delete_pdf(background_tasks: BackgroundTasks, filename: str):
-    # decode the filename in case it has special characters like spaces
-    decoded_filename = unquote(filename)
-    safe_filename = sanitize_filename(decoded_filename)
-    pdf_path = ensure_safe_child_path(UPLOAD_DIR, safe_filename)
+async def delete_document_by_name(
+    filename: str,
+    ctx: UserContext = Depends(get_user_context),
+):
+    """Legacy delete-by-name, kept so an older frontend keeps working.
 
-    # check if the file actually exists
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="PDF not found")
+    Resolution is still scoped to the caller, so this cannot reach another
+    user's file the way the pre-tenancy version could.
+    """
+    from urllib.parse import unquote
 
     try:
-        # delete the actual file from disk
-        os.remove(pdf_path)
-    except Exception as e:
-        logger.error(f"Failed to delete file {safe_filename}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete file")
-    
-    # remove it from our status tracking (with thread safety)
-    with _status_lock:
-        INGESTION_STATUS.pop(safe_filename, None)
-    
-    # rebuild the search database in the background (so the response is instant)
-    background_tasks.add_task(rebuild_vectorstore_background)
+        safe_name = sanitize_filename(unquote(filename))
+    except HTTPException:
+        raise HTTPException(status_code=404, detail="Document not found")
 
-    # respond immediately - the database rebuild happens in background
-    return {"status": "deleted", "filename": safe_filename}
-
-
-# API endpoint to delete ALL uploaded PDFs and reset everything
-@router.delete("/reset")
-async def reset_all_pdfs(background_tasks: BackgroundTasks):
-    # use locks for thread safety
-    with _vectorstore_lock:
-        # delete the entire uploads folder and recreate it empty
-        try:
-            if os.path.exists(UPLOAD_DIR):
-                shutil.rmtree(UPLOAD_DIR)
-            os.makedirs(UPLOAD_DIR, exist_ok=True)
-        except Exception as e:
-            logger.error(f"Failed to reset uploads folder: {e}")
-            raise HTTPException(status_code=500, detail="Failed to reset uploads")
-
-        # clear all status tracking
-        with _status_lock:
-            INGESTION_STATUS.clear()
-        
-        # clean up the vector database in the background
-        def cleanup_vectordb():
-            try:
-                if os.path.exists(settings.VECTOR_DB_PATH):
-                    shutil.rmtree(settings.VECTOR_DB_PATH)
-                    logger.info("Vector DB cleared successfully")
-            except Exception as e:
-                logger.error(f"Failed to clear vector DB: {e}")
-        
-        background_tasks.add_task(cleanup_vectordb)
-
-    return {"status": "reset", "message": "All PDFs and vector database cleared"}
+    record = docs.get_document_by_stored_name(ctx, safe_name)
+    if record is None or not remove_document(ctx, record["id"]):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"status": "deleted", "filename": safe_name, "id": record["id"]}

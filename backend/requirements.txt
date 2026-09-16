@@ -1,27 +1,40 @@
-fastapi
-uvicorn
-python-dotenv
-python-multipart
+# Pinned for reproducible builds. Regenerate deliberately, not by `pip freeze`.
 
-langchain
-langchain-core
-langchain-community
-langchain-google-genai
-langchain-text-splitters
+# --- Web framework ---
+fastapi==0.129.0
+uvicorn[standard]==0.40.0
+python-multipart==0.0.22
+pydantic==2.12.5
 
-faiss-cpu
-pypdf
+# --- Config ---
+python-dotenv==1.2.1
 
-tiktoken
-python-multipart
-sentence-transformers
+# --- Auth ---
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1          # passlib 1.7.4 cannot read bcrypt>=4.1 version metadata
+google-auth==2.48.0
+email-validator==2.3.0
 
+# --- RAG ---
+langchain==1.2.10
+langchain-core==1.2.12
+langchain-community==0.4.1
+langchain-text-splitters==1.1.0
+langchain-huggingface==1.2.0
+sentence-transformers==5.2.2   # pulls torch; see EMBEDDING NOTE below
+faiss-cpu==1.13.2
+google-generativeai==0.8.6
 
-python-docx
-pdfplumber
-langchain-community
-langchain-huggingface
-google-generativeai
+# --- Document parsing ---
+pypdf==6.7.0
+python-docx==1.2.0
 
-Pillow
-pytesseract
+# EMBEDDING NOTE
+# sentence-transformers installs PyTorch (~2.5GB installed, ~1GB RSS once the
+# MiniLM model is resident). That sets the hosting floor: a 512MB instance will
+# OOM. Either provision >=2GB RAM with a single worker, or swap
+# EMBEDDING_MODEL for a hosted embedding API and drop this block.
+#
+# Removed as unused (verified: zero imports in app/):
+#   pytesseract, Pillow, tiktoken, pdfplumber, langchain-google-genai

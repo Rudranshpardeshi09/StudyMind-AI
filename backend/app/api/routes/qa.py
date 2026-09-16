@@ -1,119 +1,197 @@
-# this file handles the question-answering API endpoint
+"""Question answering.
+
+Two endpoints over one pipeline:
+  POST /qa/ask        — JSON, unchanged response shape (plus richer citations)
+  POST /qa/ask/stream — Server-Sent Events carrying the real pipeline stages
+
+The streaming endpoint exists so the UI can show what the backend is actually
+doing. Every event it emits corresponds to a boundary the pipeline crossed; no
+stage is advanced on a timer.
+"""
+
 import asyncio
+import json
 import logging
-import os
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
+from app.api.routes.auth import get_user_context
 from app.api.schemas.qa import QARequest, QAResponse
 from app.core.config import settings
-from app.services.rag_service import run_rag
-from app.vectorstore.faiss_store import load_vectorstore
+from app.core.context import UserContext
+from app.services import document_service as docs
+from app.services.chat_history_service import create_or_append_chat_turn
+from app.services.rag_service import run_rag_stages
 
 logger = logging.getLogger(__name__)
-# creating a router for all QA related endpoints
+
 router = APIRouter(prefix="/qa", tags=["qa"])
 
-# this endpoint receives a question and returns an AI-generated answer from the PDFs
-@router.post("/ask", response_model=QAResponse)
-async def ask_question(request: QARequest):
-    try:
-        # make sure the question is not empty
-        if not request.question or not request.question.strip():
-            raise HTTPException(
-                status_code=422,
-                detail="Question cannot be empty"
-            )
-        
-        # prevent super long questions that might break things
-        if len(request.question) > 1000:
-            raise HTTPException(
-                status_code=422,
-                detail="Question is too long (max 1000 characters)"
-            )
-        
-        # enforce chat history limit
-        if request.chat_history and len(request.chat_history) > settings.MAX_CHAT_HISTORY:
-            logger.warning(f"Chat history exceeds limit: {len(request.chat_history)} > {settings.MAX_CHAT_HISTORY}")
-            # truncate to most recent messages
-            request.chat_history = request.chat_history[-settings.MAX_CHAT_HISTORY:]
-        
-        # make sure marks value is reasonable
-        if request.marks is not None and (request.marks < 0 or request.marks > 100):
-            raise HTTPException(
-                status_code=422,
-                detail="Marks must be between 0 and 100"
-            )
-        
-        # check if we even have any PDFs uploaded and processed
-        if not os.path.exists(settings.VECTOR_DB_PATH):
-            logger.warning("Vectorstore not found at {}".format(settings.VECTOR_DB_PATH))
-            raise HTTPException(
-                status_code=400, 
-                detail="No documents uploaded yet. Please upload PDFs first."
-            )
-        
-        # try to load our search database
-        try:
-            vectorstore = await asyncio.to_thread(load_vectorstore)
-        except Exception as e:
-            error_msg = f"Failed to load vectorstore: {str(e)}"
-            logger.error(error_msg)
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to load vectorstore. Please try re-uploading documents."
-            )
-        
-        # if the database is empty, ask the user to upload PDFs first
-        if vectorstore is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Vectorstore is empty. Please upload PDFs first."
-            )
-        
-        # convert chat history from the request into a simple list format
-        chat_history = None
-        if request.chat_history:
-            chat_history = [{"role": msg.role, "content": msg.content} for msg in request.chat_history]
-        
-        # run the RAG pipeline to get the answer
-        try:
-            result = await asyncio.to_thread(
-                run_rag,
-                question=request.question.strip(),
-                vectorstore=vectorstore,
-                syllabus_context=request.syllabus_context or "",
-                marks=request.marks or 3,
-                chat_history=chat_history
-            )
-        except Exception as e:
-            logger.error(f"RAG pipeline error: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail="Error processing your question. Please try again."
-            )
-        
-        # if the RAG pipeline returned an error, pass it to the frontend
-        if result.get("error"):
-            logger.warning(f"RAG pipeline error: {result.get('answer')}")
-            raise HTTPException(
-                status_code=400, 
-                detail=result.get("answer", "Error generating response")
-            )
-        
-        # send back the answer along with page numbers and source references
-        return QAResponse(
-            answer=result.get("answer", ""),
-            pages=result.get("pages", []),
-            sources=result.get("sources", [])
-        )
-    except HTTPException:
-        # re-raise HTTP exceptions as-is
-        raise
-    except Exception as e:
-        # catch any unexpected errors and return a clean error message
-        logger.error(f"Unexpected error in ask_question: {str(e)}")
+
+def _prepare(request: QARequest, ctx: UserContext) -> tuple[list[str], int, Optional[list]]:
+    """Validate the request and resolve its document selection to owned ids."""
+    if request.chat_history and len(request.chat_history) > settings.MAX_CHAT_HISTORY:
+        request.chat_history = request.chat_history[-settings.MAX_CHAT_HISTORY:]
+
+    selected = docs.resolve_selection(ctx, request.selected_identifiers())
+    document_ids = [d["id"] for d in selected]
+
+    ready_total = sum(1 for d in docs.list_documents(ctx) if d["status"] == "ready")
+    if ready_total == 0:
         raise HTTPException(
-            status_code=500, 
-            detail="Internal server error. Please try again later."
+            status_code=400,
+            detail="No documents are ready yet. Upload and index a document first.",
         )
+
+    history = None
+    if request.chat_history:
+        history = [{"role": m.role, "content": m.content} for m in request.chat_history]
+
+    return document_ids, (len(document_ids) or ready_total), history
+
+
+@router.post("/ask", response_model=QAResponse)
+async def ask_question(
+    request: QARequest,
+    ctx: UserContext = Depends(get_user_context),
+):
+    document_ids, doc_count, history = _prepare(request, ctx)
+
+    def _run() -> dict:
+        final, failure = None, None
+        for event in run_rag_stages(
+            ctx,
+            request.question.strip(),
+            syllabus_context=request.syllabus_context or "",
+            marks=request.marks or 3,
+            chat_history=history,
+            document_ids=document_ids,
+            document_count=doc_count,
+        ):
+            if event.get("stage") == "completed":
+                final = event["result"]
+            elif event.get("stage") == "failed":
+                failure = event
+        return {"final": final, "failure": failure}
+
+    outcome = await asyncio.to_thread(_run)
+    if outcome["failure"]:
+        raise HTTPException(status_code=400, detail=outcome["failure"]["error"])
+    result = outcome["final"]
+    if result is None:
+        raise HTTPException(status_code=500, detail="Answer generation produced no result")
+
+    try:
+        saved = await asyncio.to_thread(
+            create_or_append_chat_turn,
+            user_id=ctx.user_id,
+            question=request.question.strip(),
+            answer=result.get("answer", ""),
+            marks=request.marks or 3,
+            syllabus_context=request.syllabus_context,
+            document_names=request.selected_identifiers(),
+            sources=result.get("sources", []),
+            session_id=request.session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception:
+        logger.exception("Failed to persist chat history for %s", ctx)
+        raise HTTPException(
+            status_code=500, detail="Answer generated, but chat history could not be saved."
+        )
+
+    return QAResponse(
+        answer=result.get("answer", ""),
+        pages=result.get("pages", []),
+        sources=result.get("sources", []),
+        session_id=saved["id"],
+    )
+
+
+def _sse(event: dict) -> str:
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+@router.post("/ask/stream")
+async def ask_question_stream(
+    request: QARequest,
+    ctx: UserContext = Depends(get_user_context),
+):
+    document_ids, doc_count, history = _prepare(request, ctx)
+    question = request.question.strip()
+
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def produce():
+            try:
+                for event in run_rag_stages(
+                    ctx,
+                    question,
+                    syllabus_context=request.syllabus_context or "",
+                    marks=request.marks or 3,
+                    chat_history=history,
+                    document_ids=document_ids,
+                    document_count=doc_count,
+                ):
+                    loop.call_soon_threadsafe(queue.put_nowait, event)
+            except Exception:
+                logger.exception("Streaming pipeline crashed for %s", ctx)
+                loop.call_soon_threadsafe(
+                    queue.put_nowait,
+                    {"stage": "failed", "error": "Something went wrong. Please try again."},
+                )
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        task = asyncio.create_task(asyncio.to_thread(produce))
+        final_result = None
+
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+
+                if event.get("stage") == "completed":
+                    final_result = event["result"]
+                    # Persist before telling the client it is done, so a reload
+                    # never loses an answer the user has already seen.
+                    try:
+                        saved = await asyncio.to_thread(
+                            create_or_append_chat_turn,
+                            user_id=ctx.user_id,
+                            question=question,
+                            answer=final_result.get("answer", ""),
+                            marks=request.marks or 3,
+                            syllabus_context=request.syllabus_context,
+                            document_names=request.selected_identifiers(),
+                            sources=final_result.get("sources", []),
+                            session_id=request.session_id,
+                        )
+                        event["result"]["session_id"] = saved["id"]
+                    except Exception:
+                        logger.exception("Could not persist streamed turn for %s", ctx)
+                        event["result"]["session_id"] = request.session_id
+                        event["result"]["persisted"] = False
+
+                yield _sse(event)
+        except asyncio.CancelledError:
+            logger.info("Client cancelled the answer stream for %s", ctx)
+            raise
+        finally:
+            task.cancel()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # ask nginx-style proxies not to buffer
+        },
+    )

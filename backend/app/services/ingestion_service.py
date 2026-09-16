@@ -1,121 +1,193 @@
-# this file handles loading and processing PDFs into searchable chunks
+"""Document ingestion: parse, chunk, embed, index.
+
+Every stage transition is persisted on the document row, so status survives a
+restart and is never inferred from whether a directory happens to exist.
+"""
+
+import hashlib
 import logging
 import os
-import shutil
+from pathlib import Path
 
-from fastapi import UploadFile
-from langchain_community.document_loaders import PyPDFLoader
-
+from app.core.context import UserContext
 from app.rag.chunking import chunk_documents
-from app.vectorstore.faiss_store import save_vectorstore
+from app.services import document_service as docs
+from app.vectorstore import faiss_store
 
 logger = logging.getLogger(__name__)
 
-# folder where all uploaded PDFs are stored
-UPLOAD_DIR = "app/data/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+class IngestionError(RuntimeError):
+    """Raised with a message that is safe to show the user."""
+
+
+def _load_pdf(path: str):
+    from langchain_community.document_loaders import PyPDFLoader
+
+    loader = PyPDFLoader(path)
+    if hasattr(loader, "lazy_load"):
+        return list(loader.lazy_load())
+    return loader.load()
+
+
+def _load_docx(path: str):
+    """Split a DOCX into sections so citations are not all reported as page 1.
+
+    A DOCX has no pages until it is rendered, so headings are used as section
+    boundaries and the section index is reported as the page number.
+    """
+    from docx import Document as DocxDocument
+    from langchain_core.documents import Document
+
+    doc = DocxDocument(path)
+    sections: list[list[str]] = [[]]
+
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        style = (para.style.name or "").lower() if para.style is not None else ""
+        is_heading = style.startswith("heading") or style == "title"
+        if is_heading and sections[-1]:
+            sections.append([])
+        sections[-1].append(text)
+
+    documents = []
+    for index, body in enumerate(sections, start=1):
+        if not body:
+            continue
+        documents.append(
+            Document(
+                page_content="\n".join(body),
+                metadata={"source": os.path.basename(path), "page": index},
+            )
+        )
+
+    # A document with no headings still yields one section.
+    return documents
 
 
 def _load_documents(persistent_path: str):
-    if persistent_path.lower().endswith(".pdf"):
-        loader = PyPDFLoader(persistent_path)
-        if hasattr(loader, "lazy_load"):
-            return list(loader.lazy_load())
-        return loader.load()
-
-    if persistent_path.lower().endswith(".docx"):
-        from docx import Document as DocxDocument
-        from langchain_core.documents import Document
-
-        doc = DocxDocument(persistent_path)
-        full_text = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
-        return [Document(page_content="\n".join(full_text), metadata={"source": persistent_path})]
-
-    raise ValueError("Unsupported file format")
+    """Load a file into LangChain documents. Kept public for the mind-map service."""
+    lowered = persistent_path.lower()
+    if lowered.endswith(".pdf"):
+        return _load_pdf(persistent_path)
+    if lowered.endswith(".docx"):
+        return _load_docx(persistent_path)
+    raise IngestionError("Unsupported file format")
 
 
-# takes a PDF file and processes it into searchable chunks stored in our database
-def ingest_pdf(input_source):
-    if isinstance(input_source, UploadFile):
-        filename = input_source.filename
-        persistent_path = os.path.join(UPLOAD_DIR, filename)
-        with open(persistent_path, "wb") as f:
-            shutil.copyfileobj(input_source.file, f)
-    elif isinstance(input_source, str):
-        persistent_path = input_source
-        filename = os.path.basename(persistent_path)
-        if not os.path.exists(persistent_path):
-            raise FileNotFoundError(f"PDF not found: {persistent_path}")
-    else:
-        raise TypeError("ingest_pdf expects UploadFile or file path")
+def hash_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def ingest_document(ctx: UserContext, document_id: str) -> dict:
+    """Run the pipeline for one document, persisting each stage as it completes."""
+    record = docs.get_document(ctx, document_id)
+    if record is None:
+        raise IngestionError("Document not found")
+
+    storage = ctx.storage
+    path = storage.upload_path(record["stored_name"])
+    if not path.exists():
+        docs.set_status(document_id, "failed", error="Uploaded file is missing")
+        raise IngestionError("Uploaded file is missing")
 
     try:
-        logger.info("Loading PDF: %s", filename)
-        documents = _load_documents(persistent_path)
+        docs.set_status(document_id, "parsing")
+        loaded = _load_documents(str(path))
+        if not loaded:
+            raise IngestionError(
+                "No text could be extracted. If this is a scanned PDF it needs OCR first."
+            )
+        pages = len(loaded)
 
-        if not documents:
-            raise ValueError(f"PDF file '{filename}' is empty or unreadable - no text could be extracted")
-
-        total_pages = len(documents)
-        logger.info("Loaded %s pages from %s", total_pages, filename)
-
-        chunks = chunk_documents(documents)
+        chunks = chunk_documents(
+            loaded,
+            document_id=document_id,
+            display_name=record["original_name"],
+        )
         if not chunks:
-            raise ValueError("No chunks created from document")
-        logger.info("Created %s chunks", len(chunks))
+            raise IngestionError("Document produced no usable text chunks")
 
-        save_vectorstore(chunks)
-        logger.info("Successfully ingested %s", filename)
+        docs.set_status(document_id, "embedding", pages=pages)
+        added = faiss_store.add_chunks(storage, chunks)
 
-        return {
-            "status": "success",
-            "filename": filename,
-            "pages": total_pages,
-            "chunks": len(chunks),
-        }
+        docs.replace_chunks(
+            document_id,
+            [
+                {
+                    "chunk_id": c.metadata["chunk_id"],
+                    "page": c.metadata.get("page", 1),
+                    "ordinal": c.metadata.get("ordinal", i),
+                }
+                for i, c in enumerate(chunks)
+            ],
+        )
+        docs.set_status(document_id, "ready", pages=pages, chunk_count=len(chunks))
+        logger.info(
+            "Indexed document %s for user %s: %s pages, %s chunks (%s new vectors)",
+            document_id,
+            ctx.user_id,
+            pages,
+            len(chunks),
+            added,
+        )
+        return {"pages": pages, "chunks": len(chunks), "added": added}
 
-    except Exception as e:
-        logger.error("Error processing PDF %s: %s", filename, e)
+    except IngestionError as exc:
+        docs.set_status(document_id, "failed", error=str(exc))
         raise
+    except Exception as exc:  # unexpected: log detail, show a generic message
+        logger.exception("Ingestion failed for document %s", document_id)
+        docs.set_status(
+            document_id, "failed", error="Processing failed. Please retry this document."
+        )
+        raise IngestionError("Processing failed. Please retry this document.") from exc
 
 
-# rebuilds the entire vector database from all remaining PDFs
-# this is called after deleting a PDF to keep the database accurate
-def rebuild_vectorstore_from_uploads():
-    from app.vectorstore.faiss_store import replace_vectorstore
-    from app.core.config import settings
+def remove_document(ctx: UserContext, document_id: str) -> bool:
+    """Delete one document: its vectors, its file, and its row.
 
-    uploads_dir = "app/data/uploads"
+    Vectors are removed by chunk id, so the remaining documents are never
+    re-parsed or re-embedded.
+    """
+    record = docs.get_document(ctx, document_id)
+    if record is None:
+        return False
 
-    if not os.path.exists(uploads_dir):
-        return
-
-    pdf_files = [
-        f for f in os.listdir(uploads_dir)
-        if f.lower().endswith(".pdf") or f.lower().endswith(".docx")
-    ]
-
-    if not pdf_files:
-        if os.path.exists(settings.VECTOR_DB_PATH):
-            shutil.rmtree(settings.VECTOR_DB_PATH)
-        logger.info("No PDFs remaining, vectorstore cleared")
-        return
-
-    documents = []
-
-    for filename in pdf_files:
+    chunk_ids = docs.get_chunk_ids(document_id)
+    if chunk_ids:
         try:
-            path = os.path.join(uploads_dir, filename)
-            documents.extend(_load_documents(path))
-            logger.info("Loaded %s for rebuild", filename)
-        except Exception as e:
-            logger.warning("Failed to load %s: %s", filename, e)
+            removed = faiss_store.delete_chunks(ctx.storage, chunk_ids)
+            logger.info("Removed %s vectors for document %s", removed, document_id)
+        except Exception:
+            logger.exception("Vector cleanup failed for document %s", document_id)
 
-    if not documents:
-        if os.path.exists(settings.VECTOR_DB_PATH):
-            shutil.rmtree(settings.VECTOR_DB_PATH)
-        return
+    try:
+        path = ctx.storage.upload_path(record["stored_name"])
+        if path.exists():
+            path.unlink()
+    except OSError:
+        logger.warning("Could not delete file for document %s", document_id)
 
-    chunks = chunk_documents(documents)
-    replace_vectorstore(chunks)
-    logger.info("Rebuilt vectorstore with %s chunks from %s PDFs", len(chunks), len(pdf_files))
+    return docs.delete_document(ctx, document_id)
+
+
+def reset_user_documents(ctx: UserContext) -> int:
+    """Remove every document and the whole index for this user only."""
+    removed = docs.delete_all_documents(ctx)
+    faiss_store.reset_index(ctx.storage)
+    uploads = ctx.storage.uploads_dir
+    if uploads.exists():
+        for entry in uploads.iterdir():
+            if entry.is_file():
+                try:
+                    entry.unlink()
+                except OSError:
+                    logger.warning("Could not delete %s", entry.name)
+    return removed

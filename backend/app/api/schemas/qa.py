@@ -1,70 +1,82 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
-# represents a source reference from a PDF (which page and what text was found)
+
 class Source(BaseModel):
+    """A cited passage.
+
+    document_id / document_name / chunk_id were added so a citation identifies
+    which file it came from. They are optional because chat history persisted
+    before this change stored only page and text.
+    """
+
     page: int
     text: str
+    document_id: Optional[str] = None
+    document_name: Optional[str] = None
+    chunk_id: Optional[str] = None
 
-# represents a single message in the chat history (either from user or AI)
+
 class ChatMessage(BaseModel):
     role: str = Field(..., description="Either 'user' or 'assistant'")
     content: str = Field(..., description="The message content")
 
-    @validator("role")
+    @field_validator("role")
+    @classmethod
     def validate_role(cls, value: str) -> str:
         if value not in {"user", "assistant"}:
             raise ValueError("role must be 'user' or 'assistant'")
         return value
 
-    @validator("content")
+    @field_validator("content")
+    @classmethod
     def validate_content(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
             raise ValueError("content cannot be empty")
         return cleaned[:2000]
 
-# this is what the frontend sends when asking a question
-class QARequest(BaseModel):
-    # the actual question the student is asking
-    question: str = Field(..., min_length=1, max_length=1000)
-    # optional syllabus text to help the AI focus on relevant topics
-    syllabus_context: Optional[str] = Field(
-        default=None, 
-        max_length=10000,
-        description="User's syllabus, topics, or study context"
-    )
-    # how long the answer should be (3=short, 5=medium, 12=detailed)
-    marks: Optional[int] = Field(
-        default=3, 
-        ge=1, 
-        le=100,
-        description="Answer length: 3=short, 5=medium, 12=long"
-    )
-    # previous messages so the AI can understand follow-up questions
-    chat_history: Optional[List[ChatMessage]] = Field(
-        default=None,
-        max_length=30,
-        description="Previous conversation messages for context (max 15 message pairs)"
-    )
 
-    @validator("question")
+class QARequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=1000)
+    syllabus_context: Optional[str] = Field(default=None, max_length=10000)
+    marks: Optional[int] = Field(default=3, ge=1, le=100)
+    chat_history: Optional[List[ChatMessage]] = Field(default=None, max_length=30)
+    session_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    # Preferred: stable document ids. document_names is kept for older clients
+    # and for saved sessions that persisted names.
+    document_ids: Optional[List[str]] = Field(default=None, max_length=25)
+    document_names: Optional[List[str]] = Field(default=None, max_length=25)
+
+    @field_validator("question")
+    @classmethod
     def normalize_question(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
             raise ValueError("question cannot be empty")
         return cleaned
 
-    @validator("syllabus_context")
+    @field_validator("syllabus_context")
+    @classmethod
     def normalize_syllabus_context(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
-        cleaned = value.strip()
-        return cleaned or None
+        return value.strip() or None
 
-# this is what the backend sends back as the answer
+    def selected_identifiers(self) -> list[str]:
+        """Union of ids and names, so either client shape resolves the same way."""
+        merged: list[str] = []
+        for group in (self.document_ids, self.document_names):
+            for item in group or []:
+                text = str(item).strip()
+                if text and text not in merged:
+                    merged.append(text)
+        return merged
+
+
 class QAResponse(BaseModel):
-    answer: str           # the AI-generated answer
-    pages: List[str]      # list of page numbers where info was found
-    sources: List[Source] # detailed source references for verification
+    answer: str
+    pages: List[str]
+    sources: List[Source]
+    session_id: str

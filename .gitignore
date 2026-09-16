@@ -41,12 +41,17 @@ htmlcov/
 .tox/
 .hypothesis/
 
-# 📊 Database & Vector Store
+# 📊 Database, Vector Store & User Data
+# NOTE: paths are anchored to this file's directory (repo root), so they MUST
+# include the backend/ prefix. The previous `app/data/...` rules matched nothing.
 *.sqlite3
 *.db
-app/data/vector_db/
-app/data/uploads/
-app/data/uploaded_pdfs/
+backend/app/data/
+backend/app/data/**
+!backend/app/data/.gitkeep
+
+# 🔐 Locally generated signing material — must never be committed
+**/.jwt_secret
 
 # 📓 Jupyter & Notebooks
 .ipynb_checkpoints/

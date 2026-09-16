@@ -1,48 +1,66 @@
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
 import { cva } from "class-variance-authority";
+import { Loader2 } from "lucide-react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium " +
+    "transition-colors disabled:pointer-events-none disabled:opacity-50 " +
+    "[&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default:
-          "bg-gradient-to-r from-primary to-emerald-600 text-primary-foreground shadow-lg hover:shadow-xl hover:shadow-primary/30 dark:hover:shadow-neon/30 hover:scale-[1.02] active:scale-[0.98] transition-transform duration-200",
-        destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 transition-colors duration-200",
+        // Indigo is the only accent; it marks the single primary action.
+        default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-accent",
         outline:
-          "border border-emerald-500/30 dark:border-neon-500/50 bg-background shadow-sm hover:bg-accent hover:text-accent-foreground hover:border-emerald-500/70 dark:hover:border-neon-400 transition-colors duration-200",
-        secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 transition-colors duration-200",
-        ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-neon-500/20 transition-colors duration-200",
-        link: "text-primary underline-offset-4 hover:underline dark:text-neon-400 transition-colors duration-200",
+          "border border-border-strong bg-surface text-foreground hover:bg-surface-sunk",
+        ghost: "text-muted-foreground hover:bg-surface-sunk hover:text-foreground",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
+        link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-10 rounded-md px-8",
-        icon: "h-9 w-9",
+        // 44px minimum touch target on the default and larger sizes.
+        sm: "h-8 px-3 text-xs [&_svg]:size-3.5",
+        default: "h-10 px-4 text-sm [&_svg]:size-4",
+        lg: "h-11 px-5 text-base [&_svg]:size-4",
+        icon: "h-10 w-10 [&_svg]:size-4",
+        "icon-sm": "h-8 w-8 [&_svg]:size-3.5",
       },
     },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
+    defaultVariants: { variant: "default", size: "default" },
   }
-)
+);
 
-const Button = React.forwardRef(({ className, variant, size, asChild = false, ...props }, ref) => {
-  const Comp = asChild ? Slot : "button"
-  return (
-    <Comp
-      className={cn(buttonVariants({ variant, size, className }))}
-      ref={ref}
-      {...props} />
-  );
-})
-Button.displayName = "Button"
+const Button = React.forwardRef(
+  (
+    { className, variant, size, asChild = false, loading = false, children, ...props },
+    ref
+  ) => {
+    const Comp = asChild ? Slot : "button";
+    return (
+      <Comp
+        ref={ref}
+        className={cn(buttonVariants({ variant, size, className }))}
+        disabled={props.disabled || loading}
+        aria-busy={loading || undefined}
+        {...props}
+      >
+        {loading ? (
+          <>
+            <Loader2 className="animate-spin" aria-hidden="true" />
+            {children}
+          </>
+        ) : (
+          children
+        )}
+      </Comp>
+    );
+  }
+);
+Button.displayName = "Button";
 
-export { Button, buttonVariants }
+export { Button, buttonVariants };
