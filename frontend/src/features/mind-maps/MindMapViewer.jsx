@@ -1,10 +1,12 @@
 import { memo, useCallback, useDeferredValue, useMemo, useState } from "react";
 import {
   Background,
+  BackgroundVariant,
   Controls,
-  MarkerType,
+  Handle,
   MiniMap,
   Panel,
+  Position,
   ReactFlow,
   useReactFlow,
 } from "@xyflow/react";
@@ -21,227 +23,432 @@ import {
   Maximize2,
   Minimize2,
   Network,
+  PenLine,
+  Scan,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
+import SketchyEdge from "./SketchyEdge";
+import { roughRect } from "./sketch";
 
-/* ------------------------------------------------------------ node style */
+/* ----------------------------------------------------------------- sizing */
 
-const DEPTH_STYLES = [
-  {
-    shell: "rounded-lg border-primary/30 bg-primary text-primary-foreground",
-    title: "text-sm font-semibold",
-    description: "text-xs leading-relaxed opacity-90",
-    bullet: "bg-white/15",
-    width: "w-[280px]",
-  },
-  {
-    shell: "rounded-lg border-border bg-surface text-foreground",
-    title: "text-sm font-semibold",
-    description: "text-xs leading-relaxed text-muted-foreground",
-    bullet: "bg-surface-sunk text-muted-foreground",
-    width: "w-[250px]",
-  },
-  {
-    shell: "rounded-md border-border bg-surface text-foreground",
-    title: "text-[13px] font-medium",
-    description: "text-xs leading-relaxed text-muted-foreground",
-    bullet: "bg-surface-sunk text-muted-foreground",
-    width: "w-[230px]",
-  },
-  {
-    shell: "rounded-md border-border bg-surface-sunk text-foreground",
-    title: "text-xs font-medium",
-    description: "text-xs leading-relaxed text-muted-foreground",
-    bullet: "bg-surface text-muted-foreground",
-    width: "w-[210px]",
-  },
-];
+const NODE_WIDTHS = [300, 264, 238, 216];
+const H_GAP = 130;
+const V_GAP = 34;
 
-const NODE_WIDTHS = [280, 250, 230, 210];
-const NODE_HEIGHTS = [168, 164, 156, 144];
-const H_GAP = 150;
-const V_GAP = 72;
+const widthFor = (depth) => NODE_WIDTHS[Math.min(depth, NODE_WIDTHS.length - 1)];
 
-/* ------------------------------------------------------------------ node */
+/**
+ * Estimate a node's rendered height from its content.
+ *
+ * The old viewer used one fixed height per depth, which left short nodes
+ * floating in dead space and let long ones overlap their neighbours. Measuring
+ * is not an option here because layout runs before paint, so this approximates
+ * from character counts — and because the node is then pinned to exactly this
+ * height, the hand-drawn border can be generated at a size that always matches.
+ */
+function heightFor(node, depth) {
+  const width = widthFor(depth);
+  const titleSize = depth === 0 ? 17 : depth === 1 ? 15 : 14;
+  const titleCols = Math.max(10, Math.floor(width / (titleSize * 0.52)));
+  const bodyCols = Math.max(12, Math.floor((width - 28) / 6.4));
 
-const MindMapNode = memo(function MindMapNode({ data }) {
-  const style = DEPTH_STYLES[Math.min(data.depth, DEPTH_STYLES.length - 1)];
-  const hasChildren = data.childCount > 0;
+  const titleLines = Math.ceil((node.title?.length ?? 0) / titleCols) || 1;
+  const bodyLines = node.description
+    ? Math.ceil(node.description.length / bodyCols)
+    : 0;
+
+  const bullets = node.bullet_points ?? [];
+  // Chips wrap roughly two per row at these widths.
+  const bulletRows = bullets.length ? Math.ceil(bullets.length / 2) : 0;
+
+  return Math.round(
+    24 + // padding
+      titleLines * (titleSize + 6) +
+      (bodyLines ? 6 + bodyLines * 17 : 0) +
+      (bulletRows ? 8 + bulletRows * 24 : 0)
+  );
+}
+
+/* ---------------------------------------------------------------- palette */
+
+const BRANCH_COUNT = 7;
+const branchVar = (index) => (index === null ? "--branch-root-line" : `--branch-${index}-line`);
+const branchLine = (index) => `hsl(var(${branchVar(index)}))`;
+const branchFill = (index) =>
+  index === null ? "hsl(var(--branch-root-fill))" : `hsl(var(--branch-${index}-fill))`;
+/** Alpha has to sit outside var(), not inside it. */
+const branchTint = (index, alpha) => `hsl(var(${branchVar(index)}) / ${alpha})`;
+
+/* ------------------------------------------------------------------- node */
+
+const MindMapNode = memo(function MindMapNode({ id, data }) {
+  const {
+    label,
+    description,
+    bulletPoints = [],
+    depth,
+    width,
+    height,
+    branch,
+    side,
+    collapsed,
+    childCount,
+    sketch,
+    dimmed,
+    onToggle,
+  } = data;
+
+  const line = branchLine(branch);
+  const fill = branchFill(branch);
+  const hasChildren = childCount > 0;
+
+  // Two overlapping wobbly outlines, regenerated only when the box resizes.
+  const outlines = useMemo(
+    () => (sketch ? roughRect(width, height, depth === 0 ? 18 : 12, id) : null),
+    [sketch, width, height, depth, id]
+  );
 
   return (
     <div
+      style={{ width, height }}
       className={cn(
-        "border p-3 shadow-sm transition-shadow hover:shadow-md",
-        style.shell,
-        style.width,
-        data.isSelected && "ring-2 ring-ring"
+        "group relative transition-opacity duration-200",
+        dimmed && "opacity-25"
       )}
-      onClick={data.onToggle}
+      onClick={hasChildren ? onToggle : undefined}
       role={hasChildren ? "button" : undefined}
       tabIndex={hasChildren ? 0 : undefined}
+      aria-expanded={hasChildren ? !collapsed : undefined}
       onKeyDown={(event) => {
         if (hasChildren && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
-          data.onToggle();
+          onToggle();
         }
       }}
-      aria-expanded={hasChildren ? !data.collapsed : undefined}
     >
-      <div className="flex items-start gap-2">
-        {hasChildren && (
-          <span className="mt-0.5 shrink-0 opacity-70">
-            {data.collapsed ? (
-              <ChevronRight className="size-3.5" aria-hidden="true" />
-            ) : (
-              <ChevronDown className="size-3.5" aria-hidden="true" />
-            )}
-          </span>
+      {/* Handles are what React Flow anchors edges to; they stay invisible. */}
+      <Handle
+        type="target"
+        position={side === "left" ? Position.Right : Position.Left}
+        style={{ opacity: 0, width: 1, height: 1, border: "none", minWidth: 0, minHeight: 0 }}
+        isConnectable={false}
+      />
+      <Handle
+        type="source"
+        position={side === "left" ? Position.Left : Position.Right}
+        style={{ opacity: 0, width: 1, height: 1, border: "none", minWidth: 0, minHeight: 0 }}
+        isConnectable={false}
+      />
+
+      {sketch ? (
+        <svg
+          className="pointer-events-none absolute inset-0 overflow-visible"
+          width={width}
+          height={height}
+          aria-hidden="true"
+        >
+          <path d={outlines[0]} fill={fill} stroke="none" />
+          <path
+            d={outlines[0]}
+            fill="none"
+            stroke={line}
+            strokeWidth={depth === 0 ? 2.6 : 2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d={outlines[1]}
+            fill="none"
+            stroke={line}
+            strokeWidth={depth === 0 ? 1.6 : 1.2}
+            strokeOpacity={0.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : (
+        <div
+          className="absolute inset-0 rounded-lg border-2"
+          style={{ background: fill, borderColor: line }}
+        />
+      )}
+
+      <div
+        className={cn(
+          "relative flex h-full flex-col px-4 py-3",
+          sketch && "font-sketch"
         )}
-        <div className="min-w-0 flex-1">
-          <h3 className={style.title}>{data.label}</h3>
-          {data.description && <p className={cn("mt-1.5", style.description)}>{data.description}</p>}
+      >
+        <div className="flex items-start gap-1.5">
+          {hasChildren && (
+            <span className="mt-0.5 shrink-0" style={{ color: line }}>
+              {collapsed ? (
+                <ChevronRight className="size-4" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="size-4" aria-hidden="true" />
+              )}
+            </span>
+          )}
+          <h3
+            className={cn(
+              "min-w-0 flex-1 leading-tight",
+              depth === 0 ? "text-lg font-bold" : depth === 1 ? "text-base font-bold" : "text-sm font-bold"
+            )}
+            style={{ color: line }}
+          >
+            {label}
+          </h3>
         </div>
+
+        {description && (
+          <p
+            className={cn(
+              "mt-1.5 leading-snug text-foreground/85",
+              sketch ? "text-sm" : "text-xs"
+            )}
+          >
+            {description}
+          </p>
+        )}
+
+        {bulletPoints.length > 0 && (
+          <ul className="mt-auto flex flex-wrap gap-1 pt-2">
+            {bulletPoints.map((point) => (
+              <li
+                key={point}
+                className="rounded px-1.5 py-0.5 text-xs leading-tight"
+                style={{ background: branchTint(branch, 0.15), color: line }}
+              >
+                {point}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {hasChildren && collapsed && (
+          <p className="mt-auto pt-1.5 text-xs" style={{ color: line, opacity: 0.8 }}>
+            +{childCount} more
+          </p>
+        )}
       </div>
-
-      {data.bulletPoints?.length > 0 && (
-        <ul className="mt-2.5 flex flex-wrap gap-1">
-          {data.bulletPoints.map((point) => (
-            <li
-              key={point}
-              className={cn("rounded-sm px-1.5 py-0.5 text-xs", style.bullet)}
-            >
-              {point}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {hasChildren && data.collapsed && (
-        <p className="mt-2 text-xs opacity-70">
-          {data.childCount} hidden {data.childCount === 1 ? "branch" : "branches"}
-        </p>
-      )}
     </div>
   );
 });
 
 const nodeTypes = { mindMapNode: MindMapNode };
+const edgeTypes = { sketchy: SketchyEdge };
 
-/* ---------------------------------------------------------------- layout */
+/* ----------------------------------------------------------------- layout */
 
-function getWidth(depth) {
-  return NODE_WIDTHS[Math.min(depth, NODE_WIDTHS.length - 1)];
-}
-function getHeight(depth) {
-  return NODE_HEIGHTS[Math.min(depth, NODE_HEIGHTS.length - 1)];
-}
-
-function convertTreeToFlow(tree, collapsed, toggle, selectedId) {
+/**
+ * Radial layout: the root sits in the middle and its branches fan out to both
+ * sides, the way someone would actually draw a mind map on a whiteboard.
+ *
+ * The previous layout ran strictly left-to-right, so a wide map turned into a
+ * long horizontal ribbon with every branch the same grey — which is why it read
+ * as a list of disconnected boxes rather than a structure.
+ */
+export function buildRadialFlow(tree, collapsed, toggle, { sketch, focusBranch }) {
   const nodes = [];
   const edges = [];
   if (!tree?.title) return { nodes, edges };
 
-  function subtreeSize(node, id, depth) {
-    const children = collapsed.has(id) ? [] : node.children ?? [];
-    const width = getWidth(depth);
-    const height = getHeight(depth);
-    if (!children.length) return { width, height };
+  const isCollapsed = (id) => collapsed.has(id);
 
-    const childSizes = children.map((child, index) =>
-      subtreeSize(child, `${id}-${index}`, depth + 1)
+  // --- measure ---
+  function measure(node, id, depth) {
+    const own = heightFor(node, depth);
+    const children = isCollapsed(id) ? [] : node.children ?? [];
+    if (!children.length) return { own, total: own, children: [] };
+
+    const kids = children.map((child, index) =>
+      measure(child, `${id}-${index}`, depth + 1)
     );
-    const total = childSizes.reduce(
-      (sum, size, index) => sum + size.height + (index > 0 ? V_GAP : 0),
-      0
-    );
-    return {
-      width: width + H_GAP + Math.max(...childSizes.map((size) => size.width)),
-      height: Math.max(height, total),
-      childSizes,
-    };
+    const stacked =
+      kids.reduce((sum, kid) => sum + kid.total, 0) + V_GAP * (kids.length - 1);
+    return { own, total: Math.max(own, stacked), children: kids };
   }
 
-  function place(node, id, depth, x, y, available, parentId = null) {
-    const isCollapsed = collapsed.has(id);
-    const children = node.children ?? [];
-    const height = getHeight(depth);
+  const rootMeasure = measure(tree, "root", 0);
+  const rootChildren = isCollapsed("root") ? [] : tree.children ?? [];
+
+  // --- split branches across the two sides, preserving reading order ---
+  const half = Math.ceil(rootChildren.length / 2);
+  const sides = rootChildren.map((_, index) =>
+    index < half ? "right" : "left"
+  );
+
+  // --- place ---
+  // `info` is this node's pre-computed measurement. Passing it down keeps the
+  // whole layout linear; re-measuring inside place() made it quadratic.
+  function place(node, id, depth, side, branch, xOuter, yTop, band, parentId, info) {
+    const width = widthFor(depth);
+    const height = heightFor(node, depth);
+    const children = isCollapsed(id) ? [] : node.children ?? [];
+    // Right side grows rightwards from xOuter; left side grows leftwards, so
+    // its x is the outer edge minus the box width.
+    const x = side === "left" ? xOuter - width : xOuter;
+    const y = yTop + band / 2 - height / 2;
 
     nodes.push({
       id,
       type: "mindMapNode",
-      position: { x, y: y + available / 2 - height / 2 },
+      position: { x, y },
+      draggable: false,
+      selectable: false,
       data: {
         label: node.title,
         description: node.description ?? "",
         bulletPoints: node.bullet_points ?? [],
         depth,
-        collapsed: isCollapsed,
-        childCount: children.length,
-        isSelected: selectedId === id,
+        width,
+        height,
+        branch,
+        side,
+        sketch,
+        collapsed: isCollapsed(id),
+        childCount: (node.children ?? []).length,
+        dimmed: focusBranch !== null && branch !== null && branch !== focusBranch,
         onToggle: () => toggle(id),
       },
-      sourcePosition: "right",
-      targetPosition: "left",
-      draggable: false,
-      selectable: false,
     });
 
     if (parentId) {
-      const color =
-        depth === 1
-          ? "hsl(var(--primary))"
-          : depth === 2
-            ? "hsl(var(--border-strong))"
-            : "hsl(var(--border))";
       edges.push({
         id: `e-${parentId}-${id}`,
         source: parentId,
         target: id,
-        type: "smoothstep",
-        style: { stroke: color, strokeWidth: depth === 1 ? 2 : 1.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color },
+        type: "sketchy",
+        data: {
+          color: branchLine(branch),
+          depth,
+          sketch,
+          dimmed: focusBranch !== null && branch !== null && branch !== focusBranch,
+        },
       });
     }
 
-    if (!children.length || isCollapsed) return;
+    if (!children.length) return;
 
-    const info = subtreeSize(node, id, depth);
-    let cursor = y;
+    const childOuter = side === "left" ? x - H_GAP : x + width + H_GAP;
+    let cursor = yTop + band / 2 - info.total / 2;
+
     children.forEach((child, index) => {
-      const childId = `${id}-${index}`;
-      const childHeight = info.childSizes?.[index]?.height ?? getHeight(depth + 1);
-      place(child, childId, depth + 1, x + getWidth(depth) + H_GAP, cursor, childHeight, id);
-      cursor += childHeight + V_GAP;
+      const childInfo = info.children[index];
+      const childBand = childInfo?.total ?? heightFor(child, depth + 1);
+      place(
+        child,
+        `${id}-${index}`,
+        depth + 1,
+        side,
+        branch,
+        childOuter,
+        cursor,
+        childBand,
+        id,
+        childInfo
+      );
+      cursor += childBand + V_GAP;
     });
   }
 
-  place(tree, "root", 0, 0, 0, subtreeSize(tree, "root", 0).height);
+  // Root, centred on the origin.
+  const rootWidth = widthFor(0);
+  const rootHeight = heightFor(tree, 0);
+  nodes.push({
+    id: "root",
+    type: "mindMapNode",
+    position: { x: -rootWidth / 2, y: -rootHeight / 2 },
+    draggable: false,
+    selectable: false,
+    data: {
+      label: tree.title,
+      description: tree.description ?? "",
+      bulletPoints: tree.bullet_points ?? [],
+      depth: 0,
+      width: rootWidth,
+      height: rootHeight,
+      branch: null,
+      side: "right",
+      sketch,
+      collapsed: isCollapsed("root"),
+      childCount: (tree.children ?? []).length,
+      dimmed: false,
+      onToggle: () => toggle("root"),
+    },
+  });
+
+  // Stack each side independently, vertically centred on the root.
+  ["right", "left"].forEach((side) => {
+    const indices = sides
+      .map((value, index) => (value === side ? index : -1))
+      .filter((index) => index >= 0);
+    if (!indices.length) return;
+
+    const bands = indices.map(
+      (index) => rootMeasure.children[index]?.total ?? heightFor(rootChildren[index], 1)
+    );
+    const totalHeight =
+      bands.reduce((sum, value) => sum + value, 0) + V_GAP * (bands.length - 1);
+
+    let cursor = -totalHeight / 2;
+    indices.forEach((index, position) => {
+      const outer =
+        side === "left" ? -rootWidth / 2 - H_GAP : rootWidth / 2 + H_GAP;
+      place(
+        rootChildren[index],
+        `root-${index}`,
+        1,
+        side,
+        index % BRANCH_COUNT,
+        outer,
+        cursor,
+        bands[position],
+        "root",
+        rootMeasure.children[index]
+      );
+      cursor += bands[position] + V_GAP;
+    });
+  });
+
   return { nodes, edges };
 }
 
-/* ------------------------------------------------------------------ view */
+/* ---------------------------------------------------------------- toolbar */
 
-function ViewerToolbar({ title, onExport, fullscreen, onToggleFullscreen }) {
+function ViewerToolbar({ title, sketch, onToggleSketch, onExport, fullscreen, onToggleFullscreen }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { fitView } = useReactFlow();
 
   return (
     <Panel position="top-right" className="flex items-center gap-1.5">
-      <span className="max-w-[220px] truncate rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground">
+      <span className="hidden max-w-[200px] truncate rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-xs font-medium text-foreground backdrop-blur sm:block">
         {title}
       </span>
       <Button
+        variant={sketch ? "default" : "outline"}
+        size="icon-sm"
+        onClick={onToggleSketch}
+        aria-pressed={sketch}
+        aria-label={sketch ? "Switch to clean lines" : "Switch to hand-drawn"}
+        title={sketch ? "Hand-drawn (on)" : "Hand-drawn (off)"}
+        className={sketch ? "" : "bg-surface"}
+      >
+        <PenLine />
+      </Button>
+      <Button
         variant="outline"
         size="icon-sm"
-        onClick={() => fitView({ padding: 0.25, duration: 300 })}
+        onClick={() => fitView({ padding: 0.2, duration: 400 })}
         aria-label="Fit to view"
         title="Fit to view"
         className="bg-surface"
       >
-        <Minimize2 />
+        <Scan />
       </Button>
       <Button
         variant="outline"
@@ -301,25 +508,54 @@ function ViewerToolbar({ title, onExport, fullscreen, onToggleFullscreen }) {
   );
 }
 
+/* ------------------------------------------------------------------- view */
+
+const SKETCH_KEY = "sm_mindmap_sketch";
+
 export default function MindMapViewer({ data, loading, fullscreen, onToggleFullscreen }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
-  const [selectedId, setSelectedId] = useState("root");
+  const [focusBranch, setFocusBranch] = useState(null);
+  const [sketch, setSketch] = useState(() => {
+    try {
+      return localStorage.getItem(SKETCH_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
   const deferred = useDeferredValue(data);
 
+  const toggleSketch = useCallback(() => {
+    setSketch((value) => {
+      try {
+        localStorage.setItem(SKETCH_KEY, value ? "0" : "1");
+      } catch {
+        /* per-viewer convenience only */
+      }
+      return !value;
+    });
+  }, []);
+
   const toggle = useCallback((id) => {
-    setSelectedId(id);
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
-      else if (id !== "root") next.add(id);
+      else next.add(id);
       return next;
     });
   }, []);
 
   const { nodes, edges } = useMemo(() => {
     if (!deferred?.mindmap) return { nodes: [], edges: [] };
-    return convertTreeToFlow(deferred.mindmap, collapsed, toggle, selectedId);
-  }, [deferred, collapsed, toggle, selectedId]);
+    return buildRadialFlow(deferred.mindmap, collapsed, toggle, { sketch, focusBranch });
+  }, [deferred, collapsed, toggle, sketch, focusBranch]);
+
+  const branches = useMemo(
+    () => (deferred?.mindmap?.children ?? []).map((child, index) => ({
+      title: child.title,
+      index: index % BRANCH_COUNT,
+    })),
+    [deferred]
+  );
 
   const exportMap = useCallback(
     async (format) => {
@@ -341,7 +577,6 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
 
       const element = document.querySelector(".react-flow__viewport");
       if (!element) return;
-      // Loaded on demand so neither library reaches the entry chunk.
       const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(element, {
         backgroundColor: getComputedStyle(document.body).backgroundColor,
@@ -361,7 +596,14 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
       const properties = pdf.getImageProperties(dataUrl);
       const width = pdf.internal.pageSize.getWidth() - 20;
       const height = (properties.height * width) / properties.width;
-      pdf.addImage(dataUrl, "PNG", 10, 10, width, Math.min(height, pdf.internal.pageSize.getHeight() - 20));
+      pdf.addImage(
+        dataUrl,
+        "PNG",
+        10,
+        10,
+        width,
+        Math.min(height, pdf.internal.pageSize.getHeight() - 20)
+      );
       pdf.save(`${filename}.pdf`);
     },
     [deferred]
@@ -397,35 +639,78 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
   }
 
   return (
-    <div className="h-full overflow-hidden rounded-lg border border-border bg-surface">
+    <div className="h-full overflow-hidden rounded-lg border border-border bg-canvas">
       <ReactFlow
-        key={deferred.id}
+        key={`${deferred.id}-${sketch}`}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
-        fitViewOptions={{ padding: 0.28 }}
-        minZoom={0.15}
-        maxZoom={2}
+        fitViewOptions={{ padding: 0.18 }}
+        minZoom={0.1}
+        maxZoom={2.5}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
         onlyRenderVisibleElements
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="hsl(var(--border))" gap={22} size={1} />
+        <Background
+          variant={BackgroundVariant.Dots}
+          color="hsl(var(--border-strong))"
+          gap={26}
+          size={1.4}
+        />
         <Controls showInteractive={false} className="!border-border !bg-surface !shadow-sm" />
         <MiniMap
           pannable
           zoomable
           className="!border-border !bg-surface"
-          maskColor="hsl(var(--canvas) / 0.7)"
-          nodeColor={(node) =>
-            node.data?.depth === 0 ? "hsl(var(--primary))" : "hsl(var(--border-strong))"
-          }
+          maskColor="hsl(var(--canvas) / 0.75)"
+          nodeColor={(node) => branchLine(node.data?.branch ?? null)}
+          nodeStrokeWidth={0}
         />
+
+        {/* Branch legend: hovering a branch dims the rest, which is how you
+            follow one thread through a dense map. */}
+        {branches.length > 1 && (
+          <Panel position="bottom-left" className="max-w-[min(calc(100vw-2rem),22rem)]">
+            <div className="flex flex-wrap gap-1 rounded-md border border-border bg-surface/90 p-1.5 backdrop-blur">
+              {branches.map((branch) => (
+                <button
+                  key={branch.title}
+                  type="button"
+                  onMouseEnter={() => setFocusBranch(branch.index)}
+                  onMouseLeave={() => setFocusBranch(null)}
+                  onFocus={() => setFocusBranch(branch.index)}
+                  onBlur={() => setFocusBranch(null)}
+                  onClick={() =>
+                    setFocusBranch((current) =>
+                      current === branch.index ? null : branch.index
+                    )
+                  }
+                  className={cn(
+                    "flex max-w-[150px] items-center gap-1.5 rounded px-1.5 py-1 text-xs transition-opacity",
+                    focusBranch !== null && focusBranch !== branch.index && "opacity-40"
+                  )}
+                >
+                  <span
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{ background: branchLine(branch.index) }}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate text-foreground">{branch.title}</span>
+                </button>
+              ))}
+            </div>
+          </Panel>
+        )}
+
         <ViewerToolbar
           title={deferred.title}
+          sketch={sketch}
+          onToggleSketch={toggleSketch}
           onExport={exportMap}
           fullscreen={fullscreen}
           onToggleFullscreen={onToggleFullscreen}

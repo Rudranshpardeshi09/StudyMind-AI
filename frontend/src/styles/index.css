@@ -153,6 +153,41 @@
   }
 }
 
+/* ---- Mind-map branch palette ----------------------------------------
+     Each level-1 branch takes one hue and every descendant inherits it, so a
+     branch can be traced by colour alone. Not part of the app accent system:
+     these are data colours, used only inside the mind-map canvas. */
+  :root {
+    --branch-0-line: 25 88% 45%;   --branch-0-fill: 28 90% 96%;
+    --branch-1-line: 187 78% 36%;  --branch-1-fill: 186 70% 95%;
+    --branch-2-line: 265 65% 56%;  --branch-2-fill: 266 70% 96%;
+    --branch-3-line: 142 60% 34%;  --branch-3-fill: 142 55% 95%;
+    --branch-4-line: 215 80% 50%;  --branch-4-fill: 214 85% 96%;
+    --branch-5-line: 330 70% 50%;  --branch-5-fill: 330 75% 96%;
+    --branch-6-line: 48 85% 42%;   --branch-6-fill: 48 85% 95%;
+    --branch-root-line: 243 60% 45%; --branch-root-fill: 243 70% 96%;
+    --sketch-ink: 222 25% 18%;
+  }
+
+  .dark {
+    --branch-0-line: 30 92% 62%;   --branch-0-fill: 28 45% 13%;
+    --branch-1-line: 186 75% 55%;  --branch-1-fill: 188 45% 12%;
+    --branch-2-line: 265 85% 74%;  --branch-2-fill: 266 40% 15%;
+    --branch-3-line: 145 60% 55%;  --branch-3-fill: 145 35% 11%;
+    --branch-4-line: 213 90% 68%;  --branch-4-fill: 214 45% 14%;
+    --branch-5-line: 330 80% 68%;  --branch-5-fill: 330 40% 14%;
+    --branch-6-line: 48 90% 60%;   --branch-6-fill: 48 40% 12%;
+    --branch-root-line: 244 88% 76%; --branch-root-fill: 243 40% 18%;
+    --sketch-ink: 220 20% 92%;
+  }
+
+  /* Hand-drawn face for the sketch view. Falls back to the UI sans, which is
+     why sketch mode degrades to merely "clean" rather than breaking. */
+  .font-sketch {
+    font-family: Kalam, "Comic Sans MS", ui-rounded, system-ui, sans-serif;
+    letter-spacing: 0.01em;
+  }
+
 @layer utilities {
   .scrollbar-thin::-webkit-scrollbar {
     @apply h-2 w-2;
