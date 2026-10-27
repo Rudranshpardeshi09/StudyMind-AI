@@ -57,7 +57,7 @@ class UserStorage:
 
     def has_index(self) -> bool:
         return (self.index_dir / "index.faiss").exists() and (
-            self.index_dir / "index.pkl"
+            self.index_dir / "docstore.json"
         ).exists()
 
     def delete_index(self) -> None:

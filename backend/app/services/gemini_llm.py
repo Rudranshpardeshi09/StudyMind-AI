@@ -1,13 +1,10 @@
 import logging
 import re
 import time
-import warnings
 from functools import lru_cache
 
-warnings.simplefilter("ignore", FutureWarning)
-import google.generativeai as genai
-
 from app.core.config import settings
+from app.services import gemini_api
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +41,22 @@ def _is_quota_error(exc: Exception) -> bool:
     return "429" in message or "quota exceeded" in message or "rate limit" in message
 
 
+NON_TEXT_MODEL_MARKERS = ("image", "tts", "audio", "live", "embedding", "imagen", "veo", "robotics", "computer-use")
+
+
+def _is_text_model(model_name: str) -> bool:
+    lowered = model_name.lower()
+    return not any(marker in lowered for marker in NON_TEXT_MODEL_MARKERS)
+
+
 def _extract_retry_delay_seconds(exc: Exception) -> float:
     message = str(exc)
-    match = re.search(r"retry in ([0-9]+(?:\.[0-9]+)?)s", message, re.IGNORECASE)
-    if match:
-        return float(match.group(1))
+    match = re.search(
+        r"retry in (?:([0-9]+)h)?(?:([0-9]+)m(?!s))?(?:([0-9]+(?:\.[0-9]+)?)s)?", message, re.IGNORECASE
+    )
+    if match and any(match.groups()):
+        hours, minutes, seconds = (float(g) if g else 0.0 for g in match.groups())
+        return hours * 3600 + minutes * 60 + seconds
 
     seconds_match = re.search(r"retry_delay\s*\{\s*seconds:\s*([0-9]+)", message, re.IGNORECASE | re.DOTALL)
     if seconds_match:
@@ -90,16 +98,14 @@ def get_candidate_model_names() -> tuple[str, ...]:
     if not settings.GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    logger.info("Gemini API configured")
-
     discovered = []
     try:
-        for model in genai.list_models():
-            methods = getattr(model, "supported_generation_methods", []) or []
-            if "generateContent" not in methods:
+        for model in gemini_api.list_models():
+            if "generateContent" not in (model.get("supportedGenerationMethods") or []):
                 continue
-            discovered.append(_normalize_model_name(model.name))
+            if not _is_text_model(model.get("name", "")):
+                continue
+            discovered.append(_normalize_model_name(model.get("name", "")))
     except Exception as exc:
         logger.warning("Failed to list Gemini models, falling back to configured names: %s", exc)
 
@@ -127,11 +133,6 @@ def get_candidate_model_names() -> tuple[str, ...]:
     return tuple(ordered)
 
 
-def _build_model(model_name: str):
-    logger.info("Using Gemini model: %s", model_name)
-    return genai.GenerativeModel(model_name)
-
-
 def generate_text(prompt: str, temperature: float = 0.3, max_tokens: int = 4096, response_mime_type: str | None = None) -> str:
     if not prompt or not isinstance(prompt, str):
         raise ValueError("Prompt must be a non-empty string")
@@ -157,25 +158,22 @@ def generate_text(prompt: str, temperature: float = 0.3, max_tokens: int = 4096,
             continue
 
         attempted_any_model = True
-        model = _build_model(model_name)
+        logger.info("Using Gemini model: %s", model_name)
         for attempt in range(2):
             started_at = time.perf_counter()
             try:
-                config_kwargs = {
+                config = {
                     "temperature": temperature,
-                    "max_output_tokens": max_tokens,
-                    "candidate_count": 1,
+                    "maxOutputTokens": max_tokens,
+                    "candidateCount": 1,
                 }
                 if response_mime_type:
-                    config_kwargs["response_mime_type"] = response_mime_type
+                    config["responseMimeType"] = response_mime_type
 
-                response = model.generate_content(
-                    prompt,
-                    safety_settings=safety_settings,
-                    generation_config=genai.GenerationConfig(**config_kwargs)
-                )
+                response = gemini_api.generate_content(model_name, prompt, config, safety_settings)
+                text = gemini_api.response_text(response).strip()
 
-                if not response or not getattr(response, "text", "").strip():
+                if not text:
                     logger.warning(
                         "Empty response from Gemini model %s on attempt %s",
                         model_name,
@@ -183,17 +181,16 @@ def generate_text(prompt: str, temperature: float = 0.3, max_tokens: int = 4096,
                     )
                     raise ValueError("Empty response from model")
 
-                if hasattr(response, "candidates") and response.candidates:
-                    finish_reason = response.candidates[0].finish_reason
-                    if finish_reason and str(finish_reason) not in ("STOP", "FinishReason.STOP", "1"):
-                        logger.warning("Response may be incomplete. Finish reason: %s", finish_reason)
+                finish_reason = gemini_api.finish_reason(response)
+                if finish_reason and finish_reason != "STOP":
+                    logger.warning("Response may be incomplete. Finish reason: %s", finish_reason)
 
                 logger.info(
                     "Gemini response completed in %.2fs using %s",
                     time.perf_counter() - started_at,
                     model_name,
                 )
-                return response.text.strip()
+                return text
             except Exception as exc:
                 last_error = exc
                 logger.warning(

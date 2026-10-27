@@ -2,11 +2,11 @@ import logging
 import math
 import re
 import time
-import warnings
 
 from langchain_core.embeddings import Embeddings
 
 from app.core.config import settings
+from app.services import gemini_api
 
 logger = logging.getLogger(__name__)
 
@@ -75,30 +75,15 @@ class GeminiEmbeddings(Embeddings):
         self.base_delay = base_delay
         self.max_delay = max_delay
         self._sleep = time.sleep
-        self._genai = None
-
-    def _client(self):
-        if self._genai is None:
-            if not self.api_key:
-                raise EmbeddingServiceError("GEMINI_API_KEY is not configured")
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", FutureWarning)
-                import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            self._genai = genai
-        return self._genai
 
     def _request(self, batch: list[str], task_type: str) -> list[list[float]]:
-        genai = self._client()
+        if not self.api_key:
+            raise EmbeddingServiceError("GEMINI_API_KEY is not configured")
         for attempt in range(1, self.max_attempts + 1):
             try:
-                result = genai.embed_content(
-                    model=self.model,
-                    content=batch,
-                    task_type=task_type,
-                    output_dimensionality=self.dimensions,
+                vectors = gemini_api.batch_embed(
+                    self.model, batch, task_type, self.dimensions, api_key=self.api_key
                 )
-                vectors = result["embedding"]
                 if len(vectors) != len(batch):
                     raise EmbeddingServiceError(
                         f"Gemini returned {len(vectors)} embeddings for {len(batch)} inputs"

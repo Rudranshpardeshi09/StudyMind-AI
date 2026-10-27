@@ -16,15 +16,15 @@ class IngestionError(RuntimeError):
 
 
 def _load_pdf(path: str):
-    from langchain_community.document_loaders import PyPDFLoader
+    from langchain_core.documents import Document
+    from pypdf import PdfReader
 
-    loader = PyPDFLoader(path)
-    pages = list(loader.lazy_load()) if hasattr(loader, "lazy_load") else loader.load()
-    for page in pages:
-        number = page.metadata.get("page")
-        if isinstance(number, int):
-            page.metadata["page"] = number + 1
-    return pages
+    reader = PdfReader(path)
+    source = os.path.basename(path)
+    return [
+        Document(page_content=page.extract_text() or "", metadata={"source": source, "page": number})
+        for number, page in enumerate(reader.pages, start=1)
+    ]
 
 
 def _load_docx(path: str):

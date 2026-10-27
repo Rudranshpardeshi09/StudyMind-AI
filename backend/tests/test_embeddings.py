@@ -3,9 +3,9 @@ import math
 import sys
 
 import pytest
-from google.api_core import exceptions as google_exceptions
 
 from app.core.config import settings
+from app.services.gemini_api import GeminiAPIError
 from app.services import document_service as docs
 from app.services.ingestion_service import ingest_document
 from app.services.rag_service import _semantic_score
@@ -22,22 +22,21 @@ class FakeEmbedContent:
         self.calls = []
         self.failures = list(failures)
 
-    def __call__(self, model, content, task_type=None, output_dimensionality=None, **kwargs):
+    def __call__(self, model, texts, task_type, dimensions, api_key=None):
         self.calls.append(
-            {"model": model, "count": len(content), "task_type": task_type,
-             "dims": output_dimensionality}
+            {"model": "models/" + model.replace("models/", ""), "count": len(texts),
+             "task_type": task_type, "dims": dimensions}
         )
         if self.failures:
             raise self.failures.pop(0)
-        return {"embedding": [[3.0, 4.0] + [0.0] * (output_dimensionality - 2) for _ in content]}
+        return [[3.0, 4.0] + [0.0] * (dimensions - 2) for _ in texts]
 
 
 @pytest.fixture()
 def fake_embed(monkeypatch):
     def install(failures=()):
         fake = FakeEmbedContent(failures)
-        monkeypatch.setattr("google.generativeai.embed_content", fake)
-        monkeypatch.setattr("google.generativeai.configure", lambda **kwargs: None)
+        monkeypatch.setattr("app.services.gemini_api.batch_embed", fake)
         return fake
 
     return install
@@ -77,8 +76,8 @@ def test_query_uses_retrieval_query_task(fake_embed):
 
 def test_rate_limit_is_retried_with_backoff(fake_embed):
     fake = fake_embed([
-        google_exceptions.ResourceExhausted("429 Resource has been exhausted"),
-        google_exceptions.ServiceUnavailable("503 overloaded"),
+        GeminiAPIError(429, "Resource has been exhausted"),
+        GeminiAPIError(503, "overloaded"),
     ])
     embeddings = _gemini()
 
@@ -88,7 +87,7 @@ def test_rate_limit_is_retried_with_backoff(fake_embed):
 
 
 def test_rate_limit_gives_up_after_capped_attempts(fake_embed):
-    fake = fake_embed([google_exceptions.ResourceExhausted("429 quota")] * 10)
+    fake = fake_embed([GeminiAPIError(429, "quota")] * 10)
     embeddings = _gemini(max_attempts=4, max_delay=5.0)
 
     with pytest.raises(EmbeddingServiceError, match="after 4 attempts"):
@@ -98,7 +97,7 @@ def test_rate_limit_gives_up_after_capped_attempts(fake_embed):
 
 
 def test_client_errors_are_not_retried(fake_embed):
-    fake = fake_embed([google_exceptions.InvalidArgument("400 API key not valid")])
+    fake = fake_embed([GeminiAPIError(400, "API key not valid")])
     embeddings = _gemini()
 
     with pytest.raises(EmbeddingServiceError, match="API key not valid"):

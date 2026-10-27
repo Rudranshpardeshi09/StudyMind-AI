@@ -9,6 +9,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.core.storage import UserStorage
 from app.vectorstore.embeddings import build_embeddings, embedding_signature
+from app.vectorstore.vector_index import DOCSTORE_FILE, INDEX_FILE, VectorIndex
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,6 @@ _cache: "OrderedDict[int, tuple[object, tuple]]" = OrderedDict()
 
 class IncompatibleIndexError(RuntimeError):
     pass
-
-
-def _get_faiss_class():
-    from langchain_community.vectorstores import FAISS
-
-    return FAISS
 
 
 def get_embeddings():
@@ -76,15 +71,17 @@ def index_lock(user_id: int) -> threading.RLock:
 
 
 def _fingerprint(storage: UserStorage):
-    faiss_path = storage.index_dir / "index.faiss"
-    pkl_path = storage.index_dir / "index.pkl"
-    if not (faiss_path.exists() and pkl_path.exists()):
+    faiss_path = storage.index_dir / INDEX_FILE
+    store_path = storage.index_dir / DOCSTORE_FILE
+    if not faiss_path.exists():
         return None
+    if not store_path.exists():
+        return ("legacy",)
     return (
         faiss_path.stat().st_mtime_ns,
-        pkl_path.stat().st_mtime_ns,
+        store_path.stat().st_mtime_ns,
         faiss_path.stat().st_size,
-        pkl_path.stat().st_size,
+        store_path.stat().st_size,
     )
 
 
@@ -119,16 +116,15 @@ def load_index(storage: UserStorage):
         if fingerprint is None:
             return None
         stored = _read_signature(storage.index_dir)
-        reason = _incompatibility(stored)
+        reason = "legacy index format" if fingerprint == ("legacy",) else _incompatibility(stored)
         if reason is None:
-            FAISS = _get_faiss_class()
-            db = FAISS.load_local(
-                str(storage.index_dir),
-                get_embeddings(),
-                allow_dangerous_deserialization=True,
-            )
-            if db.index.d != stored.get("dimensions"):
-                reason = f"index dimension {db.index.d} != metadata {stored.get('dimensions')!r}"
+            try:
+                db = VectorIndex.load(storage.index_dir, get_embeddings())
+            except (OSError, ValueError, KeyError, RuntimeError) as exc:
+                reason = f"unreadable index: {exc}"
+            else:
+                if db.dimensions != stored.get("dimensions"):
+                    reason = f"index dimension {db.dimensions} != metadata {stored.get('dimensions')!r}"
         if reason is not None:
             logger.warning(
                 "Index for user %s was built with different embeddings (%s); it must be rebuilt",
@@ -147,8 +143,8 @@ def _save_atomic(db, storage: UserStorage) -> None:
     shutil.rmtree(old_dir, ignore_errors=True)
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    db.save_local(str(tmp_dir))
-    _write_signature(tmp_dir, db.index.d)
+    db.save(tmp_dir)
+    _write_signature(tmp_dir, db.dimensions)
     try:
         if storage.index_dir.exists():
             os.rename(storage.index_dir, old_dir)
@@ -165,7 +161,6 @@ def add_chunks(storage: UserStorage, chunks: list, on_rebuild=None) -> int:
 
     ids = [c.metadata["chunk_id"] for c in chunks]
     embeddings = get_embeddings()
-    FAISS = _get_faiss_class()
 
     with index_lock(storage.user_id):
         try:
@@ -177,22 +172,16 @@ def add_chunks(storage: UserStorage, chunks: list, on_rebuild=None) -> int:
             if on_rebuild is not None:
                 on_rebuild()
         if existing is None:
-            db = FAISS.from_documents(chunks, embeddings, ids=ids)
+            db = VectorIndex.from_documents(chunks, embeddings, ids=ids)
             _save_atomic(db, storage)
             return len(chunks)
 
-        known = set(existing.docstore._dict.keys())
-        fresh = [(c, i) for c, i in zip(chunks, ids) if i not in known]
-        if not fresh:
+        added = existing.add_documents(chunks, ids)
+        if not added:
             logger.info("All %s chunks already indexed for user %s", len(chunks), storage.user_id)
             return 0
-
-        new_db = FAISS.from_documents(
-            [c for c, _ in fresh], embeddings, ids=[i for _, i in fresh]
-        )
-        existing.merge_from(new_db)
         _save_atomic(existing, storage)
-        return len(fresh)
+        return added
 
 
 def delete_chunks(storage: UserStorage, chunk_ids: list[str]) -> int:
@@ -207,11 +196,11 @@ def delete_chunks(storage: UserStorage, chunk_ids: list[str]) -> int:
         if db is None:
             return 0
 
-        present = [cid for cid in chunk_ids if cid in db.docstore._dict]
+        present = [cid for cid in chunk_ids if cid in db]
         if not present:
             return 0
 
-        if len(present) >= len(db.docstore._dict):
+        if len(present) >= len(db):
             storage.delete_index()
             invalidate(storage.user_id)
             return len(present)
@@ -229,4 +218,4 @@ def reset_index(storage: UserStorage) -> None:
 
 def index_size(storage: UserStorage) -> int:
     db = load_index(storage)
-    return len(db.docstore._dict) if db is not None else 0
+    return len(db) if db is not None else 0
