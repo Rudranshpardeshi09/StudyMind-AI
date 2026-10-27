@@ -109,7 +109,11 @@ def ingest_document(ctx: UserContext, document_id: str) -> dict:
             raise IngestionError("Document produced no usable text chunks")
 
         docs.set_status(document_id, "embedding", pages=pages)
-        added = faiss_store.add_chunks(storage, chunks)
+        added = faiss_store.add_chunks(
+            storage,
+            chunks,
+            on_rebuild=lambda: docs.mark_reindex_required(ctx, exclude_id=document_id),
+        )
 
         docs.replace_chunks(
             document_id,

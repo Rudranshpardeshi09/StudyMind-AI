@@ -7,6 +7,7 @@ from typing import Iterator, Optional
 from app.core.config import settings
 from app.core.context import UserContext
 from app.rag.prompts import RAG_PROMPT
+from app.services import document_service as docs
 from app.services.gemini_llm import generate_text
 from app.vectorstore import faiss_store
 
@@ -95,7 +96,7 @@ def lexical_overlap(doc_content: str, question_keywords: set) -> float:
 
 def _semantic_score(distance: float) -> float:
     try:
-        similarity = 1.0 - (float(distance) ** 2) / 2.0
+        similarity = 1.0 - float(distance) / 2.0
     except (TypeError, ValueError):
         return 0.0
     return max(0.0, min(1.0, similarity))
@@ -226,7 +227,19 @@ def run_rag_stages(
         "document_count": document_count,
         "scope": "selected" if document_ids else "all",
     }
-    index = faiss_store.load_index(ctx.storage)
+    try:
+        index = faiss_store.load_index(ctx.storage)
+    except faiss_store.IncompatibleIndexError:
+        flagged = docs.mark_reindex_required(ctx)
+        logger.warning("Flagged %s documents for re-indexing for user %s", flagged, ctx.user_id)
+        yield {
+            "stage": "failed",
+            "error": "Your documents were indexed with a different embedding model and need "
+                     "re-indexing. Retry them from your document list (or re-upload them), "
+                     "then ask again.",
+            "code": "index_incompatible",
+        }
+        return
     if index is None:
         yield {
             "stage": "failed",
@@ -236,7 +249,16 @@ def run_rag_stages(
         return
 
     retrieval_started = time.perf_counter()
-    scored = _retrieve(index, search_query, desired_k, document_ids)
+    try:
+        scored = _retrieve(index, search_query, desired_k, document_ids)
+    except Exception:
+        logger.exception("Retrieval failed for user %s", ctx.user_id)
+        yield {
+            "stage": "failed",
+            "error": "The search service is unavailable right now. Please try again.",
+            "code": "retrieval_error",
+        }
+        return
     logger.info(
         "Retrieved %s candidates in %.2fs for user %s",
         len(scored), time.perf_counter() - retrieval_started, ctx.user_id,

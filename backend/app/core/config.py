@@ -81,6 +81,9 @@ class Settings:
     RETRIEVER_FETCH_K: int = int(os.getenv("RETRIEVER_FETCH_K", "18"))
     MAX_CONTEXT_CHARS: int = int(os.getenv("MAX_CONTEXT_CHARS", "4800"))
     LEXICAL_WEIGHT: float = float(os.getenv("LEXICAL_WEIGHT", "0.25"))
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "gemini").strip().lower()
+    GEMINI_EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
+    EMBEDDING_DIMENSIONS: int = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
     EMBEDDING_BATCH_SIZE: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
     EMBEDDING_MODEL: str = os.getenv(
         "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
@@ -113,6 +116,9 @@ class Settings:
 
 
 settings = Settings()
+
+if settings.EMBEDDING_PROVIDER not in ("gemini", "local"):
+    raise RuntimeError("EMBEDDING_PROVIDER must be 'gemini' or 'local'")
 
 if not settings.GEMINI_API_KEY:
     logger.warning("GEMINI_API_KEY not set — answer generation will fail")

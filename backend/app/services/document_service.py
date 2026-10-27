@@ -223,3 +223,20 @@ def fail_interrupted_documents() -> int:
         )
         conn.commit()
         return cur.rowcount
+
+
+REINDEX_REQUIRED_ERROR = (
+    "The search index was built with a different embedding model. "
+    "Retry this document to re-index it."
+)
+
+
+def mark_reindex_required(ctx: UserContext, exclude_id: Optional[str] = None) -> int:
+    with get_connection() as conn:
+        cur = conn.execute(
+            "UPDATE documents SET status = 'failed', error = ?, updated_at = datetime('now') "
+            "WHERE user_id = ? AND status = 'ready' AND id != ?",
+            (REINDEX_REQUIRED_ERROR, ctx.user_id, exclude_id or ""),
+        )
+        conn.commit()
+        return cur.rowcount

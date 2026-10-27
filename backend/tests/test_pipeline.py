@@ -6,7 +6,7 @@ from app.services import document_service as docs
 from app.vectorstore import faiss_store
 from tests.test_tenancy import _pdf_bytes
 
-pytestmark = pytest.mark.slow
+pytestmark = pytest.mark.usefixtures("inline_ingest")
 
 
 @pytest.fixture()

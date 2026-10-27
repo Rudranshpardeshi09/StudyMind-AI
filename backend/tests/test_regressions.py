@@ -51,7 +51,7 @@ def test_reingest_removes_previous_vectors(user_a, monkeypatch):
     monkeypatch.setattr(
         ingestion_service.faiss_store, "delete_chunks", lambda storage, ids: deleted.extend(ids) or len(ids)
     )
-    monkeypatch.setattr(ingestion_service.faiss_store, "add_chunks", lambda storage, chunks: len(chunks))
+    monkeypatch.setattr(ingestion_service.faiss_store, "add_chunks", lambda storage, chunks, **_: len(chunks))
     monkeypatch.setattr(
         ingestion_service,
         "_load_documents",

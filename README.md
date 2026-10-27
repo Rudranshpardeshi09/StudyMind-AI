@@ -14,13 +14,13 @@ StudyMind AI is a study assistant built on Retrieval-Augmented Generation (RAG).
 
 ## How it works
 
-1. **Ingestion:** files are parsed page by page and split into overlapping chunks (900 characters with 150 overlap, using LangChain). Each chunk is embedded with `all-MiniLM-L6-v2` and stored in a FAISS index belonging to that user, with its document id and page number.
+1. **Ingestion:** files are parsed page by page and split into overlapping chunks (900 characters with 150 overlap, using LangChain). Each chunk is embedded with the Gemini embedding API (`gemini-embedding-001`, 768 dimensions) and stored in a FAISS index belonging to that user, with its document id and page number. A local `all-MiniLM-L6-v2` model can be used instead (see below).
 2. **Retrieval:** a question is embedded and searched against the index. The candidates are re-ranked using semantic similarity plus keyword overlap.
 3. **Generation:** the top passages go to Gemini with instructions to answer only from them. The API returns the answer together with its citations.
 
 ## Tech stack
 
-- **Backend:** Python, FastAPI, LangChain, FAISS, sentence-transformers, Google Gemini API, SQLite
+- **Backend:** Python, FastAPI, LangChain, FAISS, Google Gemini API (answers and embeddings), SQLite; optional sentence-transformers for local embeddings
 - **Frontend:** React, Vite, Tailwind CSS, React Flow
 
 ## Run locally
@@ -44,6 +44,8 @@ uvicorn app.main:app --reload
 ```
 
 The API runs at http://localhost:8000, with interactive docs at http://localhost:8000/docs.
+
+To embed locally with `all-MiniLM-L6-v2` instead of the Gemini API (this installs PyTorch), run `pip install -r requirements-local.txt` and set `EMBEDDING_PROVIDER=local` in `.env`. Indexes are tied to the embedding model that built them: after switching provider, retry or re-upload your documents to rebuild the index.
 
 ### Frontend
 

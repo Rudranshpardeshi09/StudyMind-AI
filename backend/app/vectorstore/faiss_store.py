@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import shutil
@@ -7,8 +8,11 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.core.storage import UserStorage
+from app.vectorstore.embeddings import build_embeddings, embedding_signature
 
 logger = logging.getLogger(__name__)
+
+METADATA_FILE = "embedding.json"
 
 _embeddings_cache = None
 _embeddings_lock = threading.Lock()
@@ -16,6 +20,10 @@ _embeddings_lock = threading.Lock()
 _registry_lock = threading.Lock()
 _locks: dict[int, threading.RLock] = {}
 _cache: "OrderedDict[int, tuple[object, tuple]]" = OrderedDict()
+
+
+class IncompatibleIndexError(RuntimeError):
+    pass
 
 
 def _get_faiss_class():
@@ -29,18 +37,33 @@ def get_embeddings():
     if _embeddings_cache is None:
         with _embeddings_lock:
             if _embeddings_cache is None:
-                logger.info("Loading embeddings model %s", settings.EMBEDDING_MODEL)
-                from langchain_huggingface import HuggingFaceEmbeddings
-
-                _embeddings_cache = HuggingFaceEmbeddings(
-                    model_name=settings.EMBEDDING_MODEL,
-                    encode_kwargs={
-                        "normalize_embeddings": True,
-                        "batch_size": settings.EMBEDDING_BATCH_SIZE,
-                    },
-                )
-                logger.info("Embeddings model loaded")
+                _embeddings_cache = build_embeddings()
     return _embeddings_cache
+
+
+def _read_signature(index_dir: Path):
+    try:
+        return json.loads((index_dir / METADATA_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _write_signature(index_dir: Path, dimensions: int) -> None:
+    signature = dict(embedding_signature())
+    signature["dimensions"] = int(dimensions)
+    (index_dir / METADATA_FILE).write_text(json.dumps(signature), encoding="utf-8")
+
+
+def _incompatibility(stored) -> str | None:
+    if not isinstance(stored, dict):
+        return "no embedding metadata"
+    expected = embedding_signature()
+    for key in ("provider", "model"):
+        if stored.get(key) != expected[key]:
+            return f"{key} {stored.get(key)!r} != {expected[key]!r}"
+    if expected["dimensions"] is not None and stored.get("dimensions") != expected["dimensions"]:
+        return f"dimensions {stored.get('dimensions')!r} != {expected['dimensions']!r}"
+    return None
 
 
 def index_lock(user_id: int) -> threading.RLock:
@@ -95,12 +118,23 @@ def load_index(storage: UserStorage):
         fingerprint = _fingerprint(storage)
         if fingerprint is None:
             return None
-        FAISS = _get_faiss_class()
-        db = FAISS.load_local(
-            str(storage.index_dir),
-            get_embeddings(),
-            allow_dangerous_deserialization=True,
-        )
+        stored = _read_signature(storage.index_dir)
+        reason = _incompatibility(stored)
+        if reason is None:
+            FAISS = _get_faiss_class()
+            db = FAISS.load_local(
+                str(storage.index_dir),
+                get_embeddings(),
+                allow_dangerous_deserialization=True,
+            )
+            if db.index.d != stored.get("dimensions"):
+                reason = f"index dimension {db.index.d} != metadata {stored.get('dimensions')!r}"
+        if reason is not None:
+            logger.warning(
+                "Index for user %s was built with different embeddings (%s); it must be rebuilt",
+                user_id, reason,
+            )
+            raise IncompatibleIndexError(reason)
         _cache_put(user_id, db, fingerprint)
         logger.info("Loaded index for user %s", user_id)
         return db
@@ -114,6 +148,7 @@ def _save_atomic(db, storage: UserStorage) -> None:
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     db.save_local(str(tmp_dir))
+    _write_signature(tmp_dir, db.index.d)
     try:
         if storage.index_dir.exists():
             os.rename(storage.index_dir, old_dir)
@@ -124,7 +159,7 @@ def _save_atomic(db, storage: UserStorage) -> None:
     invalidate(storage.user_id)
 
 
-def add_chunks(storage: UserStorage, chunks: list) -> int:
+def add_chunks(storage: UserStorage, chunks: list, on_rebuild=None) -> int:
     if not chunks:
         return 0
 
@@ -133,7 +168,14 @@ def add_chunks(storage: UserStorage, chunks: list) -> int:
     FAISS = _get_faiss_class()
 
     with index_lock(storage.user_id):
-        existing = load_index(storage)
+        try:
+            existing = load_index(storage)
+        except IncompatibleIndexError:
+            storage.delete_index()
+            invalidate(storage.user_id)
+            existing = None
+            if on_rebuild is not None:
+                on_rebuild()
         if existing is None:
             db = FAISS.from_documents(chunks, embeddings, ids=ids)
             _save_atomic(db, storage)
@@ -158,7 +200,10 @@ def delete_chunks(storage: UserStorage, chunk_ids: list[str]) -> int:
         return 0
 
     with index_lock(storage.user_id):
-        db = load_index(storage)
+        try:
+            db = load_index(storage)
+        except IncompatibleIndexError:
+            return 0
         if db is None:
             return 0
 
