@@ -14,8 +14,6 @@ function Root() {
       <App />
     </BrowserRouter>
   );
-  // Only mount the Google provider when a client id is configured; without one
-  // the script load fails and logs a console error on every page.
   return googleClientId ? (
     <GoogleOAuthProvider clientId={googleClientId}>{app}</GoogleOAuthProvider>
   ) : (

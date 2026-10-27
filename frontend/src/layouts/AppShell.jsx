@@ -100,18 +100,15 @@ export default function AppShell() {
     try {
       localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
     } catch {
-      /* per-viewer convenience only */
     }
   }, [collapsed]);
 
-  // Close the drawer on navigation so a link tap does not leave it open.
   useEffect(() => setMobileOpen(false), [location.pathname]);
 
   const title = TITLES[location.pathname] ?? "StudyMind";
 
   return (
     <div className="flex h-full bg-canvas">
-      {/* Desktop sidebar */}
       <aside
         className={cn(
           "hidden shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-200 lg:flex",
@@ -136,7 +133,6 @@ export default function AppShell() {
         </div>
       </aside>
 
-      {/* Mobile drawer */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" title="Menu">
           <div className="py-2">

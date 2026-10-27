@@ -1,4 +1,3 @@
-# User persistence for email/password and Google sign-in
 import logging
 import sqlite3
 from typing import Optional, Tuple

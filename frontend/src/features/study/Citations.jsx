@@ -4,14 +4,6 @@ import { ChevronDown, FileText } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-/**
- * Citations for one answer.
- *
- * Visible by default as compact chips rather than hidden behind a decorative
- * "View Sources" button: citations are the product's core trust claim, so the
- * fact that an answer is grounded should not require a click to discover.
- * Expanding a chip reveals the quoted passage.
- */
 export default function Citations({ sources = [] }) {
   const [openIndex, setOpenIndex] = useState(null);
   const reduced = useReducedMotion();

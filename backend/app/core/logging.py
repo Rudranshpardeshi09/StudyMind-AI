@@ -1,12 +1,3 @@
-"""Structured logging.
-
-Emits one JSON line per record in production (parsable by any log aggregator)
-and human-readable lines in development. A per-request id is attached via a
-ContextVar so every line produced while handling a request correlates.
-
-Nothing here logs an email, a token, a filename's contents, or document text.
-"""
-
 import json
 import logging
 import sys
@@ -44,8 +35,6 @@ class TextFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         rid = request_id_var.get()
         prefix = f"[{rid[:8]}] " if rid != "-" else ""
-        # Render the structured extras inline so the dev log is as informative
-        # as the JSON one (a bare "request" line tells you nothing).
         extras = " ".join(
             f"{key}={value}"
             for key, value in record.__dict__.items()
@@ -74,6 +63,5 @@ def configure_logging(*, production: bool) -> None:
     root.addHandler(handler)
     root.setLevel(logging.INFO)
 
-    # These are noisy and say nothing our own access log does not.
     for noisy in ("httpx", "httpcore", "urllib3", "sentence_transformers"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

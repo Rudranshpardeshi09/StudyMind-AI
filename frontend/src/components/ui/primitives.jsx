@@ -1,23 +1,9 @@
-/**
- * Shared surface, state and layout primitives.
- *
- * Collected in one module because they are small and always used together;
- * every screen composes from these instead of repeating border/padding/radius
- * combinations inline, which is what the previous codebase did.
- *
- * Border, fill, radius and shadow are spent by role: a Card separates an
- * object, a Panel groups without claiming separation, and only overlays get
- * elevation.
- */
-
 import * as React from "react";
 import { cva } from "class-variance-authority";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-/* -------------------------------------------------------------- surfaces */
 
 export const Card = React.forwardRef(({ className, ...props }, ref) => (
   <div
@@ -55,8 +41,6 @@ export function CardContent({ className, ...props }) {
   return <div className={cn("px-5 pb-5", className)} {...props} />;
 }
 
-/* ---------------------------------------------------------------- badges */
-
 const badgeVariants = cva(
   "inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-xs font-medium",
   {
@@ -78,12 +62,6 @@ export function Badge({ className, tone, ...props }) {
   return <span className={cn(badgeVariants({ tone }), className)} {...props} />;
 }
 
-/* ------------------------------------------------------- status indicator */
-
-/**
- * Document lifecycle state. State is encoded in form as well as colour — a dot
- * shape plus a label — so it does not rely on colour alone.
- */
 const STATUS_META = {
   queued: { label: "Queued", tone: "neutral", pulse: false },
   uploading: { label: "Uploading", tone: "info", pulse: true },
@@ -124,8 +102,6 @@ export function StatusIndicator({ status, className }) {
 
 export { STATUS_META };
 
-/* ------------------------------------------------------------- skeletons */
-
 export function Skeleton({ className }) {
   return (
     <div className={cn("shimmer rounded-md bg-surface-sunk", className)} aria-hidden="true" />
@@ -141,8 +117,6 @@ export function SkeletonList({ rows = 3, className }) {
     </div>
   );
 }
-
-/* ------------------------------------------------------------- page head */
 
 export function PageHeader({ title, description, actions, className }) {
   return (
@@ -162,8 +136,6 @@ export function PageHeader({ title, description, actions, className }) {
     </div>
   );
 }
-
-/* ----------------------------------------------------------- empty state */
 
 export function EmptyState({ icon: Icon, title, description, action, className }) {
   return (
@@ -188,9 +160,6 @@ export function EmptyState({ icon: Icon, title, description, action, className }
   );
 }
 
-/* ----------------------------------------------------------- error state */
-
-/** Errors say what failed and what to do next — never a bare exception string. */
 export function ErrorState({ title = "Something went wrong", message, onRetry, className }) {
   return (
     <div
@@ -225,12 +194,6 @@ export function ErrorState({ title = "Something went wrong", message, onRetry, c
   );
 }
 
-/* -------------------------------------------------------------- progress */
-
-/**
- * Determinate bar. Only used where a real measured quantity exists — currently
- * only upload byte progress. Indexing has no percentage and must not get one.
- */
 export function ProgressBar({ value, label, className }) {
   const clamped = Math.max(0, Math.min(100, Math.round(value ?? 0)));
   return (
@@ -252,7 +215,6 @@ export function ProgressBar({ value, label, className }) {
   );
 }
 
-/** Indeterminate activity for work with no measurable progress. */
 export function ActivityBar({ label, className }) {
   return (
     <div
@@ -265,8 +227,6 @@ export function ActivityBar({ label, className }) {
     />
   );
 }
-
-/* ----------------------------------------------------------------- misc */
 
 export function Separator({ className, orientation = "horizontal" }) {
   return (

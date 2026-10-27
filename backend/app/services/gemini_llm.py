@@ -1,4 +1,3 @@
-# this file handles all communication with Google's Gemini AI
 import logging
 import re
 import time
@@ -133,7 +132,6 @@ def _build_model(model_name: str):
     return genai.GenerativeModel(model_name)
 
 
-# this sends a prompt to Gemini and gets back the AI's response
 def generate_text(prompt: str, temperature: float = 0.3, max_tokens: int = 4096, response_mime_type: str | None = None) -> str:
     if not prompt or not isinstance(prompt, str):
         raise ValueError("Prompt must be a non-empty string")

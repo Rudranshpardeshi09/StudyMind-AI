@@ -1,11 +1,3 @@
-/**
- * Document state, shared by Library, Study and Mind Maps.
- *
- * Split out of the old single AppContext, whose memo had 25 dependencies so an
- * upload progress tick re-rendered every consumer including the mind-map page.
- * This provider holds documents only; study settings live in StudyContext.
- */
-
 import {
   createContext,
   useCallback,
@@ -32,7 +24,6 @@ export function DocumentsProvider({ children }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  // Byte-transfer progress per in-flight upload. Real measured values only.
   const [uploads, setUploads] = useState({});
 
   const mounted = useRef(true);
@@ -49,8 +40,6 @@ export function DocumentsProvider({ children }) {
 
   const refresh = useCallback(
     async ({ quiet = false } = {}) => {
-      // The old provider fetched on mount regardless of auth, which guaranteed
-      // a 401 and a spurious error banner on every cold load.
       if (!isAuthenticated) {
         setDocuments([]);
         return [];
@@ -72,7 +61,6 @@ export function DocumentsProvider({ children }) {
     [isAuthenticated]
   );
 
-  // Poll only while something is actually processing, with backoff.
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     if (!isAuthenticated) return undefined;

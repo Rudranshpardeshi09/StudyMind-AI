@@ -1,4 +1,3 @@
-/** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ["class"],
   content: ["./index.html", "./src/**/*.{js,jsx}"],
@@ -74,7 +73,6 @@ export default {
         md: "var(--shadow-md)",
       },
       fontSize: {
-        // 12 is the floor; the old sheet used 9px and 10px throughout.
         xs: ["0.75rem", { lineHeight: "1.1rem" }],
         sm: ["0.8125rem", { lineHeight: "1.2rem" }],
         base: ["0.9375rem", { lineHeight: "1.45rem" }],

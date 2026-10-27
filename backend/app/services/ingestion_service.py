@@ -1,9 +1,3 @@
-"""Document ingestion: parse, chunk, embed, index.
-
-Every stage transition is persisted on the document row, so status survives a
-restart and is never inferred from whether a directory happens to exist.
-"""
-
 import hashlib
 import logging
 import os
@@ -18,24 +12,22 @@ logger = logging.getLogger(__name__)
 
 
 class IngestionError(RuntimeError):
-    """Raised with a message that is safe to show the user."""
+    pass
 
 
 def _load_pdf(path: str):
     from langchain_community.document_loaders import PyPDFLoader
 
     loader = PyPDFLoader(path)
-    if hasattr(loader, "lazy_load"):
-        return list(loader.lazy_load())
-    return loader.load()
+    pages = list(loader.lazy_load()) if hasattr(loader, "lazy_load") else loader.load()
+    for page in pages:
+        number = page.metadata.get("page")
+        if isinstance(number, int):
+            page.metadata["page"] = number + 1
+    return pages
 
 
 def _load_docx(path: str):
-    """Split a DOCX into sections so citations are not all reported as page 1.
-
-    A DOCX has no pages until it is rendered, so headings are used as section
-    boundaries and the section index is reported as the page number.
-    """
     from docx import Document as DocxDocument
     from langchain_core.documents import Document
 
@@ -63,12 +55,10 @@ def _load_docx(path: str):
             )
         )
 
-    # A document with no headings still yields one section.
     return documents
 
 
 def _load_documents(persistent_path: str):
-    """Load a file into LangChain documents. Kept public for the mind-map service."""
     lowered = persistent_path.lower()
     if lowered.endswith(".pdf"):
         return _load_pdf(persistent_path)
@@ -86,7 +76,6 @@ def hash_file(path: Path) -> str:
 
 
 def ingest_document(ctx: UserContext, document_id: str) -> dict:
-    """Run the pipeline for one document, persisting each stage as it completes."""
     record = docs.get_document(ctx, document_id)
     if record is None:
         raise IngestionError("Document not found")
@@ -98,6 +87,11 @@ def ingest_document(ctx: UserContext, document_id: str) -> dict:
         raise IngestionError("Uploaded file is missing")
 
     try:
+        stale = docs.get_chunk_ids(document_id)
+        if stale:
+            faiss_store.delete_chunks(storage, stale)
+            docs.replace_chunks(document_id, [])
+
         docs.set_status(document_id, "parsing")
         loaded = _load_documents(str(path))
         if not loaded:
@@ -142,7 +136,7 @@ def ingest_document(ctx: UserContext, document_id: str) -> dict:
     except IngestionError as exc:
         docs.set_status(document_id, "failed", error=str(exc))
         raise
-    except Exception as exc:  # unexpected: log detail, show a generic message
+    except Exception as exc:
         logger.exception("Ingestion failed for document %s", document_id)
         docs.set_status(
             document_id, "failed", error="Processing failed. Please retry this document."
@@ -151,11 +145,6 @@ def ingest_document(ctx: UserContext, document_id: str) -> dict:
 
 
 def remove_document(ctx: UserContext, document_id: str) -> bool:
-    """Delete one document: its vectors, its file, and its row.
-
-    Vectors are removed by chunk id, so the remaining documents are never
-    re-parsed or re-embedded.
-    """
     record = docs.get_document(ctx, document_id)
     if record is None:
         return False
@@ -179,7 +168,6 @@ def remove_document(ctx: UserContext, document_id: str) -> bool:
 
 
 def reset_user_documents(ctx: UserContext) -> int:
-    """Remove every document and the whole index for this user only."""
     removed = docs.delete_all_documents(ctx)
     faiss_store.reset_index(ctx.storage)
     uploads = ctx.storage.uploads_dir

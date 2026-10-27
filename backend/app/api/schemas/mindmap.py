@@ -1,5 +1,3 @@
-"""Pydantic models for the mind-map API."""
-
 from enum import Enum
 from typing import Optional
 
@@ -19,7 +17,6 @@ class MindMapMode(str, Enum):
 
 class MindMapGenerateRequest(BaseModel):
     source_type: SourceType
-    # Preferred: document ids. source_filenames stays for older clients.
     document_ids: list[str] = Field(default_factory=list, max_length=10)
     source_filenames: list[str] = Field(default_factory=list, max_length=10)
     text_content: Optional[str] = None

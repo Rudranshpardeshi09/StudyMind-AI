@@ -1,16 +1,16 @@
-/**
- * HTTP core: axios instance, token storage and the 401 handler.
- *
- * The token lives in localStorage so a reload keeps the session. That is a
- * deliberate trade-off: it is readable by injected script, which is why the
- * server-side plan shortens token lifetime and adds refresh rotation. Until
- * that lands, the storage shape here already carries an explicit expiry so a
- * stale token is discarded client-side rather than sent and rejected.
- */
-
 import axios from "axios";
 
-export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+function resolveApiUrl() {
+  const configured = import.meta.env.VITE_API_URL;
+  if (configured) return configured;
+  if (import.meta.env.DEV) return "http://localhost:8000";
+  console.error(
+    "VITE_API_URL is not set. Set it to the backend URL at build time; API requests will fail until it is configured."
+  );
+  return "";
+}
+
+export const API_URL = resolveApiUrl();
 
 const TOKEN_KEY = "sm_access_token";
 const MAX_SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -44,7 +44,7 @@ function readSession() {
   try {
     raw = localStorage.getItem(TOKEN_KEY);
   } catch {
-    return null; // private mode / blocked storage
+    return null;
   }
   if (!raw) return null;
 
@@ -60,7 +60,6 @@ function readSession() {
     try {
       localStorage.removeItem(TOKEN_KEY);
     } catch {
-      /* ignore */
     }
     return null;
   }
@@ -68,6 +67,11 @@ function readSession() {
 
 export function getAccessToken() {
   return readSession()?.token ?? null;
+}
+
+export function getTokenClaims() {
+  const token = getAccessToken();
+  return token ? decodeJwtPayload(token) : null;
 }
 
 export function setAccessToken(token, expiresInSeconds = null) {
@@ -90,7 +94,6 @@ export function setAccessToken(token, expiresInSeconds = null) {
       })
     );
   } catch {
-    /* storage unavailable; the session simply will not survive a reload */
   }
 }
 
@@ -109,9 +112,12 @@ http.interceptors.request.use((config) => {
 
 let unauthorizedHandler = () => {};
 
-/** The router installs this so a 401 navigates instead of firing a window event. */
 export function setUnauthorizedHandler(handler) {
   unauthorizedHandler = typeof handler === "function" ? handler : () => {};
+}
+
+export function handleUnauthorized() {
+  unauthorizedHandler();
 }
 
 function isAuthEndpoint(url = "") {
@@ -133,7 +139,6 @@ http.interceptors.response.use(
   }
 );
 
-/** Turn any axios failure into a sentence a person can act on. */
 export function toMessage(error, fallback = "Something went wrong. Please try again.") {
   const detail = error?.response?.data?.detail;
   if (typeof detail === "string" && detail.trim()) return detail;

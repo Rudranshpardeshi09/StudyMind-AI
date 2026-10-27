@@ -1,19 +1,13 @@
-# importing the prompt template class from langchain
 from langchain_core.prompts import PromptTemplate
 
-# this is the main prompt template that tells the AI how to answer questions
-# it gets filled in with the actual question, context from PDFs, chat history etc
-# Created once at module load time to avoid repeated instantiation
 RAG_PROMPT = PromptTemplate(
-    # these are the placeholders that get replaced with actual values
     input_variables=[
-        "syllabus_context",  # what syllabus topics the student is studying
-        "context",           # relevant text extracted from uploaded PDFs
-        "question",          # the students actual question
-        "marks",             # how long the answer should be (3, 5, or 12 marks)
-        "chat_history"       # previous messages so AI remembers the conversation
+        "syllabus_context",
+        "context",
+        "question",
+        "marks",
+        "chat_history"
     ],
-    # the actual prompt text sent to Gemini AI
     template="""You are an expert academic tutor answering strictly from the supplied study material.
 
 RULES:
@@ -54,7 +48,6 @@ def build_mindmap_generation_prompt(
     chapter: str | None = None,
     topic: str | None = None,
 ) -> str:
-    """Builds the generation prompt for clear, flow-oriented academic mind maps."""
     focus_instruction = ""
     if mode == "chapter" and chapter:
         focus_instruction = (

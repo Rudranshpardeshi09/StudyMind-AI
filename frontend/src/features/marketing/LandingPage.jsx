@@ -37,7 +37,6 @@ export default function LandingPage() {
     );
   }
 
-  // A signed-in visitor wants their workspace, not the pitch.
   if (isAuthenticated) return <Navigate to="/overview" replace />;
 
   return (

@@ -1,10 +1,3 @@
-"""Request-scoped user identity.
-
-Resolved once by the auth dependency and passed as the first argument of every
-service call, so a query that forgets to scope by user does not type-check at
-the call site.
-"""
-
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -20,5 +13,5 @@ class UserContext:
     def storage(self) -> UserStorage:
         return storage_for(self.user_id)
 
-    def __str__(self) -> str:  # never log the email
+    def __str__(self) -> str:
         return f"user:{self.user_id}"

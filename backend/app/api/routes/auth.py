@@ -1,4 +1,3 @@
-# Registration, login, Google OAuth token exchange, and current-user introspection
 import logging
 import sqlite3
 
@@ -163,10 +162,5 @@ async def me(user: UserPublic = Depends(get_current_user)):
 async def get_user_context(
     creds: HTTPAuthorizationCredentials = Depends(security_required),
 ) -> UserContext:
-    """Resolve the caller into a UserContext.
-
-    Services take this as their first argument, which makes an unscoped query a
-    call-site error rather than something a reviewer has to catch.
-    """
     user = _user_from_bearer_token(creds)
     return UserContext(user_id=int(user.sub), email=user.email)

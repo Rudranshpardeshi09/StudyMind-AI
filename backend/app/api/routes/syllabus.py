@@ -1,10 +1,3 @@
-"""Syllabus parsing.
-
-This was the one upload path that bypassed the streamed size guard and trusted
-the client-declared content type. It now goes through the same validated write
-as document ingestion.
-"""
-
 import logging
 import tempfile
 from pathlib import Path
@@ -21,8 +14,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/syllabus", tags=["Syllabus"])
 
 _ALLOWED_SUFFIXES = {".pdf", ".docx"}
-# PDF and DOCX (a ZIP container) identified by magic bytes, not by the header
-# the client chose to send.
 _MAGIC = {b"%PDF": ".pdf", b"PK\x03\x04": ".docx"}
 
 
@@ -51,7 +42,6 @@ async def upload_syllabus(
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp_path = Path(tmp.name)
-        # Streams with the shared 50MB cap instead of reading the whole file.
         save_upload_file(file, str(tmp_path))
 
         actual = _sniff(tmp_path)

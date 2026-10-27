@@ -35,7 +35,27 @@ function formatBytes(bytes) {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-function DocumentRow({ document, uploadPercent, onRetry, onDelete }) {
+function PendingUploadRow({ name, percent }) {
+  return (
+    <li className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground" title={name}>
+            {name}
+          </p>
+          <p className="tabular mt-0.5 text-xs text-muted-foreground">Uploading… {percent}%</p>
+          <ProgressBar value={percent} label={`Uploading ${name}`} className="mt-2 max-w-xs" />
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2 pl-7 sm:pl-0">
+        <StatusIndicator status="uploading" />
+      </div>
+    </li>
+  );
+}
+
+function DocumentRow({ document, onRetry, onDelete }) {
   const isActive = ACTIVE.has(document.status);
 
   return (
@@ -60,16 +80,7 @@ function DocumentRow({ document, uploadPercent, onRetry, onDelete }) {
             )}
           </p>
 
-          {/* Determinate only while bytes are moving — a real measured value.
-              Indexing gets an indeterminate bar because no percentage exists. */}
-          {uploadPercent !== undefined && (
-            <ProgressBar
-              value={uploadPercent}
-              label={`Uploading ${document.original_name}`}
-              className="mt-2 max-w-xs"
-            />
-          )}
-          {uploadPercent === undefined && isActive && (
+          {isActive && (
             <ActivityBar
               label={`Processing ${document.original_name}`}
               className="mt-2 max-w-xs"
@@ -125,6 +136,7 @@ export default function LibraryPage() {
   const [notice, setNotice] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const pendingUploads = Object.entries(uploads);
 
   const handleFiles = useCallback(
     async (fileList) => {
@@ -148,8 +160,6 @@ export default function LibraryPage() {
     [upload]
   );
 
-  // Real drag-and-drop. The previous version styled a dashed border around a
-  // plain file input and had no drag handlers at all.
   const onDragEnter = (event) => {
     event.preventDefault();
     dragDepth.current += 1;
@@ -182,7 +192,6 @@ export default function LibraryPage() {
           }
         />
 
-        {/* Drop zone -------------------------------------------------- */}
         <div
           onDragEnter={onDragEnter}
           onDragOver={(event) => event.preventDefault()}
@@ -224,7 +233,6 @@ export default function LibraryPage() {
         )}
         {error && <ErrorState message={error} onRetry={() => { clearError(); refresh(); }} />}
 
-        {/* Documents -------------------------------------------------- */}
         <Card>
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="text-sm font-semibold text-foreground">
@@ -240,11 +248,11 @@ export default function LibraryPage() {
             )}
           </div>
 
-          {loading && documents.length === 0 ? (
+          {loading && documents.length === 0 && pendingUploads.length === 0 ? (
             <div className="p-4">
               <SkeletonList rows={3} />
             </div>
-          ) : documents.length === 0 ? (
+          ) : documents.length === 0 && pendingUploads.length === 0 ? (
             <EmptyState
               icon={FileText}
               title="No documents yet"
@@ -253,12 +261,20 @@ export default function LibraryPage() {
             />
           ) : (
             <ul className="divide-y divide-border">
+              {pendingUploads.map(([name, percent]) => (
+                <PendingUploadRow key={`upload-${name}`} name={name} percent={percent} />
+              ))}
               {documents.map((document) => (
                 <DocumentRow
                   key={document.id}
                   document={document}
-                  uploadPercent={uploads[document.stored_name] ?? uploads[document.original_name]}
-                  onRetry={(doc) => retry(doc.id)}
+                  onRetry={async (doc) => {
+                    try {
+                      await retry(doc.id);
+                    } catch (retryError) {
+                      setNotice(toMessage(retryError, "Could not retry that document."));
+                    }
+                  }}
                   onDelete={setPendingDelete}
                 />
               ))}
@@ -317,7 +333,11 @@ export default function LibraryPage() {
         description={`All ${documents.length} documents and your entire search index will be deleted. Saved chats are kept, but their citations will no longer resolve. This cannot be undone.`}
         confirmLabel="Remove everything"
         onConfirm={async () => {
-          await resetAll();
+          try {
+            await resetAll();
+          } catch (resetError) {
+            setNotice(toMessage(resetError, "Could not remove your documents."));
+          }
           setResetOpen(false);
         }}
       />

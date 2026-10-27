@@ -1,11 +1,3 @@
-/**
- * Renders a sample map to preview/mindmap-preview.html using the real layout
- * and sketch code, so the visual direction can be checked without booting the
- * app. Skipped unless GEN_PREVIEW=1, so it never slows the normal suite.
- *
- *   GEN_PREVIEW=1 npx vitest run src/test/preview.gen.test.js
- */
-
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, vi } from "vitest";
@@ -95,7 +87,6 @@ describe.skipIf(!enabled)("preview", () => {
 
     const parts = [];
 
-    // Edges first, so boxes sit on top of the connectors.
     for (const edge of edges) {
       const source = byId.get(edge.source);
       const target = byId.get(edge.target);

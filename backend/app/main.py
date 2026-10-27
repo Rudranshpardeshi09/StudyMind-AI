@@ -1,5 +1,3 @@
-"""FastAPI application entry point."""
-
 import logging
 import os
 import time
@@ -16,6 +14,7 @@ from app.core.logging import configure_logging, new_request_id, request_id_var
 from app.core.rate_limit import RateLimiter
 from app.core.security import safe_decode_access_token
 from app.db.auth_db import init_db
+from app.services.document_service import fail_interrupted_documents
 
 configure_logging(production=settings.IS_PRODUCTION)
 logger = logging.getLogger(__name__)
@@ -24,6 +23,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    interrupted = fail_interrupted_documents()
+    if interrupted:
+        logger.warning("Marked %s interrupted documents as failed", interrupted)
     logger.info(
         "StudyMind API starting",
         extra={"environment": settings.ENVIRONMENT, "data_dir": str(settings.DATA_DIR)},
@@ -31,8 +33,6 @@ async def lifespan(app: FastAPI):
     yield
 
 
-# Interactive docs describe every endpoint and schema. Closed in production
-# unless EXPOSE_DOCS is explicitly set.
 _docs_enabled = settings.EXPOSE_DOCS or not settings.IS_PRODUCTION
 
 app = FastAPI(
@@ -53,8 +53,6 @@ ALLOWED_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    # Auth is a bearer token, not a cookie, so credentials are not needed and
-    # allowing them would force an exact-origin match for no benefit.
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
@@ -66,15 +64,15 @@ _api_limiter = RateLimiter(settings.RATE_LIMIT_PER_MINUTE)
 
 
 def _client_key(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    if settings.TRUST_PROXY:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 
 @app.middleware("http")
 async def request_context(request: Request, call_next):
-    """Attach a request id, time the request, and emit one access line."""
     token = request_id_var.set(new_request_id())
     started = time.perf_counter()
     try:
@@ -107,7 +105,7 @@ async def rate_limit(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path
-    is_auth = path.startswith("/auth/")
+    is_auth = path.startswith("/auth/") and path != "/auth/me"
     limiter = _auth_limiter if is_auth else _api_limiter
     scope = "auth" if is_auth else "api"
     allowed, retry_after = limiter.allow(f"{scope}:{_client_key(request)}")
@@ -124,8 +122,6 @@ async def rate_limit(request: Request, call_next):
 def _is_public_path(path: str) -> bool:
     if path in ("/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect"):
         return True
-    # Exact prefix with a separator, so a future "/authorize" route is not
-    # accidentally treated as public.
     return path == "/auth" or path.startswith("/auth/")
 
 
@@ -153,11 +149,14 @@ async def require_auth(request: Request, call_next):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc):
     if settings.DEBUG:
+        errors = [
+            {"loc": e.get("loc"), "msg": e.get("msg"), "type": e.get("type")}
+            for e in exc.errors()
+        ]
         return JSONResponse(
             status_code=422,
-            content={"detail": "Invalid request data", "errors": str(exc)},
+            content={"detail": "Invalid request data", "errors": errors},
         )
-    # Validation detail can echo submitted values; keep it out of the response.
     return JSONResponse(status_code=422, content={"detail": "Invalid request data"})
 
 

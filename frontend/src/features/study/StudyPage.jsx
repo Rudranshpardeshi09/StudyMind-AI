@@ -31,8 +31,6 @@ export default function StudyPage() {
   const [draft, setDraft] = useState("");
   const [loadError, setLoadError] = useState(null);
 
-  // URL is the source of truth for the open session and selected documents, so
-  // a reload, a back navigation and a shared link all restore the same view.
   const sessionId = searchParams.get("session");
   const documentParam = searchParams.get("document");
 
@@ -43,6 +41,15 @@ export default function StudyPage() {
   }, [documentParam, ready]);
 
   const lastQuestion = useRef("");
+  const mountedRef = useRef(true);
+  const runRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const patchParams = useCallback(
     (changes) => {
@@ -66,7 +73,6 @@ export default function StudyPage() {
     try {
       setSessions(await chatApi.list());
     } catch {
-      /* the list is supporting context; a failure must not block asking */
     } finally {
       setSessionsLoading(false);
     }
@@ -76,7 +82,6 @@ export default function StudyPage() {
     loadSessions();
   }, [loadSessions]);
 
-  // Restore an opened session from the URL.
   useEffect(() => {
     let cancelled = false;
     if (!sessionId) {
@@ -115,6 +120,7 @@ export default function StudyPage() {
       setDraft("");
       setMessages((prev) => [...prev, { id: nextId(), role: "user", content: question }]);
       setPendingStartedAt(Date.now());
+      const run = ++runRef.current;
 
       const outcome = await stream.ask({
         question,
@@ -123,10 +129,12 @@ export default function StudyPage() {
         session_id: sessionId || null,
         document_ids: selectedIds,
         chat_history: messages
+          .filter((message) => !message.error)
           .slice(-10)
           .map(({ role, content }) => ({ role, content })),
       });
 
+      if (!mountedRef.current || run !== runRef.current) return;
       setPendingStartedAt(null);
 
       if (outcome.cancelled) {
@@ -139,7 +147,7 @@ export default function StudyPage() {
             error: true,
           },
         ]);
-        setDraft(question); // never lose what they typed
+        setDraft(question);
         return;
       }
 
@@ -174,7 +182,6 @@ export default function StudyPage() {
 
   const retry = useCallback(() => {
     if (!lastQuestion.current) return;
-    // Drop the failed assistant turn and the question that produced it.
     setMessages((prev) => {
       const trimmed = [...prev];
       if (trimmed.at(-1)?.error) trimmed.pop();
@@ -218,9 +225,11 @@ export default function StudyPage() {
         if (id === sessionId) patchParams({ session: "" });
       }}
       onNewChat={() => {
+        runRef.current += 1;
+        stream.reset();
+        setPendingStartedAt(null);
         patchParams({ session: "" });
         setMessages([]);
-        stream.reset();
         setConfigOpen(false);
       }}
     />
@@ -231,13 +240,11 @@ export default function StudyPage() {
 
   return (
     <div className="flex h-full">
-      {/* Desktop: configuration is a fixed rail; the conversation gets the rest. */}
       <aside className="hidden w-[300px] shrink-0 overflow-y-auto border-r border-border bg-surface scrollbar-thin lg:block">
         {config}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile: the conversation is primary; configuration is a sheet. */}
         <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2 lg:hidden">
           <Button variant="outline" size="sm" onClick={() => setConfigOpen(true)}>
             <SlidersHorizontal aria-hidden="true" />

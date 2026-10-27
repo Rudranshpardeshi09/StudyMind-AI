@@ -1,10 +1,3 @@
-"""Cross-tenant access suite — the gate for the tenancy work.
-
-Two users, each owning data, asserting that neither can observe or affect the
-other through any route. Every new route that touches user data must add a case
-here. These are the three critical leaks the audit found, encoded as tests.
-"""
-
 import io
 
 import pytest
@@ -14,7 +7,6 @@ from tests.conftest import auth_headers
 
 
 def _pdf_bytes(text: str = "Photosynthesis converts light energy into chemical energy.") -> bytes:
-    """Smallest valid single-page PDF carrying extractable text."""
     content = f"BT /F1 12 Tf 40 700 Td ({text}) Tj ET"
     objects = [
         "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
@@ -48,15 +40,12 @@ def _upload(client, headers, name="notes.pdf"):
 
 
 def _make_document(ctx, name="secret.pdf"):
-    """Create a ready document row directly (no embedding model needed)."""
     record = docs.create_document(
         ctx, original_name=name, stored_name=name, byte_size=100, content_hash="h" + name
     )
     docs.set_status(record["id"], "ready", pages=1, chunk_count=2)
     return docs.get_document(ctx, record["id"])
 
-
-# --- documents --------------------------------------------------------------
 
 def test_document_list_is_scoped(client, user_a, user_b):
     _make_document(user_a["ctx"], "alice-private.pdf")
@@ -87,7 +76,6 @@ def test_cannot_delete_another_users_document_by_id(client, user_a, user_b):
 
 
 def test_cannot_delete_another_users_document_by_name(client, user_a, user_b):
-    """The pre-tenancy /ingest/delete/{filename} route deleted across users."""
     doc = _make_document(user_a["ctx"], "shared-name.pdf")
     response = client.delete("/ingest/delete/shared-name.pdf", headers=user_b["headers"])
     assert response.status_code == 404
@@ -115,8 +103,6 @@ def test_selection_cannot_reach_another_users_document(user_a, user_b):
     resolved = docs.resolve_selection(user_b["ctx"], [doc["id"], "alice.pdf"])
     assert resolved == [], "document selection must not cross tenants"
 
-
-# --- mind maps --------------------------------------------------------------
 
 def _make_mindmap(ctx, title="Alice Map"):
     from app.services.mindmap_service import _save
@@ -160,8 +146,6 @@ def test_cannot_rename_another_users_mindmap(client, user_a, user_b):
     assert still["title"] == "Alice Map"
 
 
-# --- chat -------------------------------------------------------------------
-
 def _make_session(ctx, question="What is mitosis?"):
     from app.services.chat_history_service import create_or_append_chat_turn
 
@@ -190,8 +174,6 @@ def test_cannot_open_or_delete_another_users_chat(client, user_a, user_b):
     assert client.delete(f"/chat-sessions/{sid}", headers=user_b["headers"]).status_code == 404
     assert client.get(f"/chat-sessions/{sid}", headers=user_a["headers"]).status_code == 200
 
-
-# --- authentication ---------------------------------------------------------
 
 PROTECTED = [
     ("get", "/ingest/documents"),

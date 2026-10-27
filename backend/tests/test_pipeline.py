@@ -1,9 +1,3 @@
-"""Integration: upload -> index -> retrieve -> cite -> persist.
-
-Uses the real embedding model and a real FAISS index so the wiring is genuinely
-exercised. Only the Gemini call is stubbed, so these run offline and free.
-"""
-
 import io
 
 import pytest
@@ -17,7 +11,6 @@ pytestmark = pytest.mark.slow
 
 @pytest.fixture()
 def stub_llm(monkeypatch):
-    """Replace the Gemini call; retrieval and indexing stay real."""
     calls = {"prompts": []}
 
     def fake_generate(prompt, **kwargs):
@@ -38,8 +31,6 @@ def _upload_and_index(client, headers, ctx, name="biology.pdf", text=None):
     assert response.status_code == 200, response.text
     document = response.json()["document"]
 
-    # BackgroundTasks hands off to the pool; run the pipeline inline instead so
-    # the test is deterministic rather than timing-dependent.
     from app.services.ingestion_service import ingest_document
 
     ingest_document(ctx, document["id"])
@@ -70,7 +61,6 @@ def test_answer_cites_the_source_document(client, user_a, stub_llm):
     assert payload["answer"]
     assert payload["sources"], "an answer must carry citations"
     first = payload["sources"][0]
-    # The audit's headline citation defect: the document name was dropped.
     assert first["document_name"] == "biology.pdf"
     assert first["document_id"]
     assert first["page"] >= 1
@@ -118,7 +108,6 @@ def test_stream_emits_real_stages_in_order(client, user_a, stub_llm):
 
     generating = next(e for e in events if e["stage"] == "generating")
     completed = next(e for e in events if e["stage"] == "completed")
-    # The count shown to the user must equal the passages actually used.
     assert generating["passage_count"] == len(completed["result"]["sources"])
     assert generating["documents"] == ["biology.pdf"]
     assert completed["result"]["session_id"]
@@ -140,7 +129,6 @@ def test_delete_removes_only_that_documents_vectors(client, user_a):
 
     after = faiss_store.index_size(user_a["ctx"].storage)
     assert after == keep["chunk_count"], "only the deleted document's vectors go"
-    # The kept document was not re-parsed or re-embedded.
     assert docs.get_document(user_a["ctx"], keep["id"])["status"] == "ready"
 
 
@@ -170,9 +158,9 @@ def test_selecting_one_document_never_returns_another(client, user_a, stub_llm):
         "/qa/ask",
         headers=user_a["headers"],
         json={
-            "question": "When did the revolution begin?",   # matches history.pdf
+            "question": "When did the revolution begin?",
             "marks": 3,
-            "document_ids": [bio["id"]],                     # but biology is selected
+            "document_ids": [bio["id"]],
         },
     ).json()
 

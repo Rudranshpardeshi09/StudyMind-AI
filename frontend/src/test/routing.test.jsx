@@ -1,7 +1,3 @@
-/**
- * Route protection, redirect-after-login, and the open-redirect guard.
- */
-
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -42,7 +38,6 @@ describe("ProtectedRoute", () => {
   });
 
   it("shows a skeleton instead of redirecting while auth resolves", () => {
-    // The old implementation bounced through the auth screen on every cold load.
     Object.assign(authState, { isAuthenticated: false, loading: true });
     renderAt("/study", <ProtectedRoute><p>Study screen</p></ProtectedRoute>);
     expect(screen.queryByText("Login screen")).not.toBeInTheDocument();

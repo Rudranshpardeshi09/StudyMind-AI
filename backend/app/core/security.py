@@ -1,5 +1,3 @@
-# Password hashing and JWT helpers
-import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -55,7 +53,3 @@ def safe_decode_access_token(token: str) -> Optional[dict[str, Any]]:
         return decode_access_token(token)
     except JWTError:
         return None
-
-
-def constant_time_equals(a: str, b: str) -> bool:
-    return secrets.compare_digest(a.encode("utf-8"), b.encode("utf-8"))

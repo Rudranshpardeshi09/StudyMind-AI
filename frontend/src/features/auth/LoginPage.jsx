@@ -40,7 +40,6 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  // Only a validated same-origin path is ever followed.
   const next = useMemo(() => safeNext(searchParams.get("next")), [searchParams]);
   const destination = next ?? "/overview";
 
@@ -103,7 +102,6 @@ export default function LoginPage() {
 
   return (
     <div className="grid min-h-screen bg-canvas lg:grid-cols-[1.05fr_1fr]">
-      {/* Context panel — quiet, not a marketing hero. */}
       <aside className="relative hidden flex-col justify-between bg-surface p-10 lg:flex">
         <Link to="/" className="flex items-center gap-2.5 text-foreground">
           <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -135,7 +133,6 @@ export default function LoginPage() {
         </p>
       </aside>
 
-      {/* Form */}
       <main className="flex items-center justify-center px-5 py-10 sm:px-8">
         <div className="w-full max-w-sm">
           <Link to="/" className="mb-8 flex items-center gap-2.5 text-foreground lg:hidden">

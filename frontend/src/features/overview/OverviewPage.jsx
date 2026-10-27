@@ -10,7 +10,6 @@ import {
   Library,
   MessageSquare,
   Network,
-  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -77,7 +76,7 @@ function ListCard({ title, icon: Icon, to, linkLabel, children }) {
 
 export default function OverviewPage() {
   const { user } = useAuth();
-  const { documents, ready, processing, failed, loading, refresh } = useDocuments();
+  const { documents, ready, processing, failed, loading } = useDocuments();
   const navigate = useNavigate();
 
   const [sessions, setSessions] = useState([]);
@@ -114,7 +113,6 @@ export default function OverviewPage() {
     return local ? local.charAt(0).toUpperCase() + local.slice(1) : "there";
   }, [user]);
 
-  // The onboarding checklist reflects real state, and each step navigates.
   const steps = [
     {
       id: "upload",
@@ -171,7 +169,6 @@ export default function OverviewPage() {
           }
         />
 
-        {/* Status ----------------------------------------------------- */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatTile label="Ready to study" value={ready.length} hint="documents indexed" />
           <StatTile
@@ -196,7 +193,6 @@ export default function OverviewPage() {
           />
         )}
 
-        {/* Setup checklist -------------------------------------------- */}
         {remaining.length > 0 && (
           <Card>
             <div className="border-b border-border px-4 py-3">
@@ -244,7 +240,6 @@ export default function OverviewPage() {
           </Card>
         )}
 
-        {/* Activity --------------------------------------------------- */}
         {activityError && <ErrorState message={activityError} />}
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -312,7 +307,6 @@ export default function OverviewPage() {
           </ListCard>
         </div>
 
-        {/* Documents at a glance -------------------------------------- */}
         <ListCard title="Documents" icon={Library} to="/library" linkLabel="Manage">
           {loading && documents.length === 0 ? (
             <SkeletonList rows={2} />

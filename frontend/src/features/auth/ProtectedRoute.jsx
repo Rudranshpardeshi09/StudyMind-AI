@@ -3,12 +3,6 @@ import { Navigate, useLocation } from "react-router-dom";
 import { Skeleton } from "@/components/ui/primitives";
 import { useAuth } from "./AuthContext";
 
-/**
- * Build the ?next= value from a location.
- *
- * Only a same-origin relative path is ever produced or accepted: an unchecked
- * `next` is an open redirect.
- */
 export function encodeNext(location) {
   const target = `${location.pathname}${location.search}`;
   if (target === "/" || target.startsWith("/login")) return "";
@@ -23,8 +17,6 @@ export function safeNext(raw) {
   } catch {
     return null;
   }
-  // Must be a single-slash relative path. "//evil.com" and "https://evil.com"
-  // are both rejected.
   if (!candidate.startsWith("/") || candidate.startsWith("//")) return null;
   if (candidate.includes("://")) return null;
   return candidate;
@@ -49,7 +41,6 @@ export function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
 
-  // Never decide before the session is known, or every cold load flashes login.
   if (loading) return <RouteSkeleton />;
 
   if (!isAuthenticated) {

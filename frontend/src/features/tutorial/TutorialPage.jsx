@@ -4,11 +4,6 @@ import { ArrowRight, BookOpen, FileUp, Network, Quote, Search } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Card, PageHeader } from "@/components/ui/primitives";
 
-/**
- * How the product works. The numbered markers are real sequence — a document
- * genuinely cannot be queried before it is indexed — so numbering here encodes
- * something true rather than decorating the page.
- */
 const STEPS = [
   {
     icon: FileUp,
@@ -32,7 +27,7 @@ const STEPS = [
     body:
       "Every answer lists the passages it used, naming the document and page. Click one to read " +
       "the exact text the answer was built from.",
-    detail: "If the material does not cover something, the answer says so rather than inventing it.",
+    detail: "The model is instructed to say when your material does not cover something, rather than invent an answer.",
   },
   {
     icon: Network,
@@ -55,7 +50,7 @@ const FAQ = [
   },
   {
     q: "What do the stages mean while an answer generates?",
-    a: "They are the real steps the server is taking — preparing the question, searching, ranking passages, generating, and assembling citations. A stage only appears once that work is done.",
+    a: "They are the real steps the server is taking — preparing the question, searching, ranking passages, generating, and preparing citations. Each stage appears when the server starts that step, and the previous stage is marked done at that point.",
   },
   {
     q: "Does deleting one document rebuild everything?",

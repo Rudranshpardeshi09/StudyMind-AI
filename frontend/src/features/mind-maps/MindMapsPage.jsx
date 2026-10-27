@@ -66,6 +66,8 @@ export default function MindMapsPage() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [renaming, setRenaming] = useState(null);
   const [renameValue, setRenameValue] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError] = useState(null);
   const [fullscreen, setFullscreen] = useState(false);
 
   const loadHistory = useCallback(async () => {
@@ -73,7 +75,6 @@ export default function MindMapsPage() {
     try {
       setHistory(await mindMapsApi.list());
     } catch {
-      /* the gallery is supporting context */
     } finally {
       setHistoryLoading(false);
     }
@@ -83,7 +84,6 @@ export default function MindMapsPage() {
     loadHistory();
   }, [loadHistory]);
 
-  // Deep link: /mind-maps?id=… opens that map, and survives a reload.
   useEffect(() => {
     let cancelled = false;
     if (!openId) {
@@ -106,7 +106,6 @@ export default function MindMapsPage() {
     };
   }, [openId]);
 
-  // Chapter and topic scopes need the document outline.
   useEffect(() => {
     if (scope === "full" || source !== "uploaded_pdf" || !selectedIds.length) return;
     let cancelled = false;
@@ -357,6 +356,59 @@ export default function MindMapsPage() {
     </div>
   );
 
+  const galleryList = historyLoading ? (
+    <SkeletonList rows={3} />
+  ) : history.length === 0 ? (
+    <p className="px-1 text-xs text-muted-foreground">
+      Generated maps are saved here automatically.
+    </p>
+  ) : (
+    <ul className="space-y-1">
+      {history.map((item) => (
+        <li key={item.id} className="group relative">
+          <button
+            type="button"
+            onClick={() => setSearchParams({ id: item.id })}
+            className={cn(
+              "w-full rounded-md border px-2.5 py-2 pr-14 text-left transition-colors",
+              item.id === openId
+                ? "border-primary/40 bg-primary-soft"
+                : "border-transparent hover:bg-surface-sunk"
+            )}
+          >
+            <span className="block truncate text-sm text-foreground">{item.title}</span>
+            <span className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+              <Clock className="size-3 shrink-0" aria-hidden="true" />
+              {item.source}
+            </span>
+          </button>
+          <div className="absolute right-1 top-1.5 flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Rename ${item.title}`}
+              onClick={() => {
+                setRenaming(item);
+                setRenameValue(item.title);
+                setRenameError(null);
+              }}
+            >
+              <Pencil className="text-muted-foreground" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Delete ${item.title}`}
+              onClick={() => setPendingDelete(item)}
+            >
+              <Trash2 className="text-muted-foreground" />
+            </Button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+
   const gallery = (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-4 py-3">
@@ -364,59 +416,7 @@ export default function MindMapsPage() {
           Saved maps
         </h2>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin">
-        {historyLoading ? (
-          <SkeletonList rows={3} />
-        ) : history.length === 0 ? (
-          <p className="px-1 text-xs text-muted-foreground">
-            Generated maps are saved here automatically.
-          </p>
-        ) : (
-          <ul className="space-y-1">
-            {history.map((item) => (
-              <li key={item.id} className="group relative">
-                <button
-                  type="button"
-                  onClick={() => setSearchParams({ id: item.id })}
-                  className={cn(
-                    "w-full rounded-md border px-2.5 py-2 pr-14 text-left transition-colors",
-                    item.id === openId
-                      ? "border-primary/40 bg-primary-soft"
-                      : "border-transparent hover:bg-surface-sunk"
-                  )}
-                >
-                  <span className="block truncate text-sm text-foreground">{item.title}</span>
-                  <span className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
-                    <Clock className="size-3 shrink-0" aria-hidden="true" />
-                    {item.source}
-                  </span>
-                </button>
-                <div className="absolute right-1 top-1.5 flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Rename ${item.title}`}
-                    onClick={() => {
-                      setRenaming(item);
-                      setRenameValue(item.title);
-                    }}
-                  >
-                    <Pencil className="text-muted-foreground" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Delete ${item.title}`}
-                    onClick={() => setPendingDelete(item)}
-                  >
-                    <Trash2 className="text-muted-foreground" />
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-thin">{galleryList}</div>
     </div>
   );
 
@@ -436,6 +436,20 @@ export default function MindMapsPage() {
                 Mind map setup
               </summary>
               <div className="border-t border-border">{controls}</div>
+            </details>
+          </div>
+        )}
+
+        {!fullscreen && (
+          <div className="mb-3 xl:hidden">
+            <details className="rounded-lg border border-border bg-surface">
+              <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium text-foreground">
+                Saved maps{" "}
+                <span className="tabular font-normal text-muted-foreground">({history.length})</span>
+              </summary>
+              <div className="max-h-72 overflow-y-auto border-t border-border p-3 scrollbar-thin">
+                {galleryList}
+              </div>
             </details>
           </div>
         )}
@@ -465,14 +479,20 @@ export default function MindMapsPage() {
         description={`"${pendingDelete?.title ?? ""}" will be removed permanently.`}
         confirmLabel="Delete map"
         onConfirm={async () => {
-          await mindMapsApi.remove(pendingDelete.id);
-          setHistory((prev) => prev.filter((item) => item.id !== pendingDelete.id));
-          if (pendingDelete.id === openId) setSearchParams({}, { replace: true });
+          const target = pendingDelete;
+          await mindMapsApi.remove(target.id);
+          setHistory((prev) => prev.filter((item) => item.id !== target.id));
+          if (target.id === openId) setSearchParams({}, { replace: true });
           setPendingDelete(null);
         }}
       />
 
-      <Dialog open={Boolean(renaming)} onOpenChange={(open) => !open && setRenaming(null)}>
+      <Dialog
+        open={Boolean(renaming)}
+        onOpenChange={(open) => {
+          if (!open && !renameSaving) setRenaming(null);
+        }}
+      >
         <DialogContent title="Rename mind map">
           <label htmlFor="map-title" className="sr-only">
             Mind map title
@@ -484,22 +504,37 @@ export default function MindMapsPage() {
             maxLength={120}
             className="mt-4 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:border-primary focus:outline-none"
           />
+          {renameError && (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              {renameError}
+            </p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenaming(null)}>
+            <Button variant="outline" onClick={() => setRenaming(null)} disabled={renameSaving}>
               Cancel
             </Button>
             <Button
               onClick={async () => {
-                const updated = await mindMapsApi.rename(renaming.id, renameValue.trim());
-                setHistory((prev) =>
-                  prev.map((item) =>
-                    item.id === renaming.id ? { ...item, title: updated.title } : item
-                  )
-                );
-                if (map?.id === renaming.id) setMap(updated);
-                setRenaming(null);
+                const target = renaming;
+                setRenameSaving(true);
+                setRenameError(null);
+                try {
+                  const updated = await mindMapsApi.rename(target.id, renameValue.trim());
+                  setHistory((prev) =>
+                    prev.map((item) =>
+                      item.id === target.id ? { ...item, title: updated.title } : item
+                    )
+                  );
+                  if (map?.id === target.id) setMap(updated);
+                  setRenaming(null);
+                } catch (requestError) {
+                  setRenameError(toMessage(requestError, "Could not rename that mind map."));
+                } finally {
+                  setRenameSaving(false);
+                }
               }}
-              disabled={!renameValue.trim()}
+              loading={renameSaving}
+              disabled={!renameValue.trim() || renameSaving}
             >
               Save
             </Button>

@@ -1,7 +1,3 @@
-/**
- * Composer behaviour, document status display, and citation rendering.
- */
-
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -23,8 +19,6 @@ describe("Composer", () => {
   });
 
   it("inserts a newline on Shift+Enter instead of sending", async () => {
-    // The old composer was an <input>, so this was impossible despite being
-    // documented in the UI.
     const onSend = vi.fn();
     const user = userEvent.setup();
     render(<Composer onSend={onSend} />);
@@ -65,7 +59,6 @@ describe("Composer", () => {
   });
 
   it("restores a draft after a failed send", () => {
-    // A failed turn must never lose what the student typed.
     render(<Composer onSend={vi.fn()} restoreValue="my lost question" />);
     expect(screen.getByRole("textbox")).toHaveValue("my lost question");
   });
@@ -124,7 +117,6 @@ describe("Citations", () => {
   ];
 
   it("names the document and page without needing a click", () => {
-    // Citations are the product's trust claim, so they are visible by default.
     render(<Citations sources={sources} />);
     expect(screen.getByText("2 sources")).toBeInTheDocument();
     expect(screen.getByText("biology.pdf")).toBeInTheDocument();
@@ -151,7 +143,6 @@ describe("AnswerProgress", () => {
     render(<AnswerProgress activeStage="retrieving" reachedIndex={1} detail={{}} />);
     expect(screen.getByText("Understanding your question")).toBeInTheDocument();
     expect(screen.getByText("Searching your study material")).toBeInTheDocument();
-    // Future stages are absent — the list must not read as a progress bar.
     expect(screen.queryByText("Building your answer")).not.toBeInTheDocument();
     expect(screen.queryByText("Checking citations")).not.toBeInTheDocument();
   });

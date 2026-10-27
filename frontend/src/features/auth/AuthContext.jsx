@@ -9,14 +9,17 @@ import {
 } from "react";
 
 import { authApi } from "@/services/api";
-import { getAccessToken, setAccessToken, setUnauthorizedHandler } from "@/services/http";
+import {
+  getAccessToken,
+  getTokenClaims,
+  setAccessToken,
+  setUnauthorizedHandler,
+} from "@/services/http";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  // Starts true so routes render a skeleton instead of bouncing through the
-  // login screen before the session has been resolved.
   const [loading, setLoading] = useState(true);
   const onUnauthorized = useRef(() => {});
 
@@ -34,8 +37,13 @@ export function AuthProvider({ children }) {
     try {
       const data = await authApi.me();
       setUser({ sub: data.sub, email: data.email });
-    } catch {
-      clearSession();
+    } catch (error) {
+      if (error?.response?.status === 401) {
+        clearSession();
+      } else {
+        const claims = getTokenClaims();
+        setUser({ sub: claims?.sub ?? null, email: claims?.email ?? null });
+      }
     } finally {
       setLoading(false);
     }
@@ -75,7 +83,6 @@ export function AuthProvider({ children }) {
       loginWithGoogle: (idToken) => authenticate(() => authApi.google(idToken)),
       logout: clearSession,
       refresh,
-      /** The router registers where to send the user when a 401 arrives. */
       registerUnauthorizedRedirect: (handler) => {
         onUnauthorized.current = handler;
       },

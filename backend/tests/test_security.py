@@ -1,5 +1,3 @@
-"""Authentication, upload validation, storage containment and rate limiting."""
-
 import io
 
 import pytest
@@ -8,8 +6,6 @@ from app.core.rate_limit import RateLimiter
 from app.core.storage import UnsafePathError, UserStorage
 from tests.conftest import auth_headers, register
 
-
-# --- authentication ---------------------------------------------------------
 
 def test_register_rejects_weak_password(client):
     for weak in ("short1", "alllettersnodigits", "12345678"):
@@ -25,7 +21,6 @@ def test_register_rejects_duplicate_email(client):
         "/auth/register", json={"email": "dupe@example.com", "password": "Passw0rd123"}
     )
     assert response.status_code == 409
-    # The message must not confirm whether the account exists in a usable way.
     assert "exists" not in response.json()["detail"].lower()
 
 
@@ -81,8 +76,6 @@ def test_token_signed_with_another_secret_is_rejected(client):
     assert client.get("/auth/me", headers=auth_headers(forged)).status_code == 401
 
 
-# --- upload validation ------------------------------------------------------
-
 def test_rejects_disallowed_extension(client, user_a):
     response = client.post(
         "/ingest/",
@@ -98,7 +91,6 @@ def test_rejects_traversal_in_filename(client, user_a):
         headers=user_a["headers"],
         files={"file": ("../../../../etc/passwd.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
     )
-    # Either rejected outright, or the name is flattened into the user's folder.
     if response.status_code == 200:
         stored = response.json()["document"]["stored_name"]
         assert "/" not in stored and "\\" not in stored and ".." not in stored
@@ -117,7 +109,6 @@ def test_rejects_oversize_upload(client, user_a, monkeypatch):
 
 
 def test_syllabus_rejects_content_extension_mismatch(client, user_a):
-    """A DOCX extension on PDF bytes must be caught by magic-byte sniffing."""
     response = client.post(
         "/syllabus/upload",
         headers=user_a["headers"],
@@ -150,8 +141,6 @@ def test_document_limit_is_enforced(client, user_a, monkeypatch):
     assert response.status_code == 409
 
 
-# --- storage containment ----------------------------------------------------
-
 @pytest.mark.parametrize(
     "name",
     ["../escape.pdf", "../../etc/passwd", "sub/dir.pdf", "..", ".", "", "a\x00b.pdf"],
@@ -165,8 +154,6 @@ def test_storage_refuses_paths_outside_the_user_root(name):
 def test_each_user_gets_a_distinct_root():
     assert UserStorage(1).root != UserStorage(2).root
 
-
-# --- rate limiting ----------------------------------------------------------
 
 def test_rate_limiter_allows_then_blocks():
     limiter = RateLimiter(limit=3, window_seconds=60)
@@ -188,8 +175,6 @@ def test_rate_limiter_disabled_when_limit_is_zero():
     assert all(limiter.allow("k")[0] for _ in range(50))
 
 
-# --- configuration ----------------------------------------------------------
-
 def test_production_requires_a_strong_jwt_secret(monkeypatch):
     import importlib
 
@@ -202,7 +187,6 @@ def test_production_requires_a_strong_jwt_secret(monkeypatch):
     with pytest.raises(RuntimeError, match="at least 32 characters"):
         importlib.reload(importlib.import_module("app.core.config"))
 
-    # Restore the module the rest of the session shares.
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("JWT_SECRET", "test-secret-that-is-long-enough-for-production-rules")
     importlib.reload(importlib.import_module("app.core.config"))

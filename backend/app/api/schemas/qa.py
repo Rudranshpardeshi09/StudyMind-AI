@@ -4,12 +4,6 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class Source(BaseModel):
-    """A cited passage.
-
-    document_id / document_name / chunk_id were added so a citation identifies
-    which file it came from. They are optional because chat history persisted
-    before this change stored only page and text.
-    """
 
     page: int
     text: str
@@ -44,8 +38,6 @@ class QARequest(BaseModel):
     marks: Optional[int] = Field(default=3, ge=1, le=100)
     chat_history: Optional[List[ChatMessage]] = Field(default=None, max_length=30)
     session_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
-    # Preferred: stable document ids. document_names is kept for older clients
-    # and for saved sessions that persisted names.
     document_ids: Optional[List[str]] = Field(default=None, max_length=25)
     document_names: Optional[List[str]] = Field(default=None, max_length=25)
 
@@ -65,7 +57,6 @@ class QARequest(BaseModel):
         return value.strip() or None
 
     def selected_identifiers(self) -> list[str]:
-        """Union of ids and names, so either client shape resolves the same way."""
         merged: list[str] = []
         for group in (self.document_ids, self.document_names):
             for item in group or []:

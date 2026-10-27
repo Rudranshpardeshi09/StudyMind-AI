@@ -12,7 +12,6 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Indigo is the only accent; it marks the single primary action.
         default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
         secondary: "bg-secondary text-secondary-foreground hover:bg-accent",
         outline:
@@ -23,7 +22,6 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        // 44px minimum touch target on the default and larger sizes.
         sm: "h-8 px-3 text-xs [&_svg]:size-3.5",
         default: "h-10 px-4 text-sm [&_svg]:size-4",
         lg: "h-11 px-5 text-base [&_svg]:size-4",

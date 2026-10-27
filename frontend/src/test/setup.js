@@ -4,7 +4,6 @@ import { afterEach, vi } from "vitest";
 
 afterEach(cleanup);
 
-// jsdom implements neither of these, and the shell + viewer both use them.
 window.matchMedia = window.matchMedia || ((query) => ({
   matches: false,
   media: query,

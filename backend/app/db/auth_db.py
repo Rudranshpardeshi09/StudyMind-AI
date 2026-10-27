@@ -1,11 +1,3 @@
-"""SQLite access layer.
-
-Every connection enables foreign keys explicitly: SQLite defaults the pragma to
-OFF per-connection, which silently made the ON DELETE CASCADE clauses on
-chat_messages inert. Schema changes are applied through an additive migration
-list so existing data is preserved.
-"""
-
 import logging
 import sqlite3
 from contextlib import contextmanager

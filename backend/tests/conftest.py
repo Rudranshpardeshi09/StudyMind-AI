@@ -1,10 +1,3 @@
-"""Test fixtures.
-
-Each test module runs against a throwaway DATA_DIR so the developer's real
-database, uploads and indexes are never touched. DATA_DIR must be set before
-app.core.config is imported, which is why this happens at module import time.
-"""
-
 import os
 import shutil
 import sys
@@ -20,8 +13,6 @@ os.environ["DATA_DIR"] = str(_TMP)
 os.environ["ENVIRONMENT"] = "development"
 os.environ["JWT_SECRET"] = "test-secret-that-is-long-enough-for-production-rules"
 os.environ["AUTH_REQUIRED"] = "true"
-# Rate limiting is exercised by its own test; leaving it on here would
-# throttle the suite itself.
 os.environ["AUTH_RATE_LIMIT_PER_MINUTE"] = "0"
 os.environ["RATE_LIMIT_PER_MINUTE"] = "0"
 os.environ.setdefault("GEMINI_API_KEY", "test-key-not-used")
@@ -49,7 +40,6 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _clean_db():
-    """Start every test from an empty user table (cascades clear the rest)."""
     with get_connection() as conn:
         conn.execute("DELETE FROM users")
         conn.commit()
@@ -57,7 +47,6 @@ def _clean_db():
 
 
 def register(client, email: str, password: str = "Passw0rd123") -> str:
-    """Create a user and return their bearer token."""
     response = client.post("/auth/register", json={"email": email, "password": password})
     assert response.status_code == 200, response.text
     return response.json()["access_token"]

@@ -1,12 +1,3 @@
-/**
- * Mind-map layout.
- *
- * The complaint these tests encode: boxes that did not read as connected and
- * had no visible flow between them. So: every node must be reachable by an
- * edge, branches must keep one colour end to end, and nothing may overlap
- * anything else.
- */
-
 import { describe, expect, it, vi } from "vitest";
 
 import { buildRadialFlow } from "@/features/mind-maps/MindMapViewer";
@@ -48,7 +39,6 @@ const overlaps = (a, b) =>
 describe("radial layout", () => {
   it("emits every node in the tree", () => {
     const { nodes } = build();
-    // 1 root + 5 branches + 11 leaves
     expect(nodes).toHaveLength(17);
   });
 
@@ -96,7 +86,6 @@ describe("radial layout", () => {
     const { nodes } = build();
     for (const node of nodes) {
       if (node.id === "root") continue;
-      // "root-2-1" belongs to branch 2.
       const branchIndex = Number(node.id.split("-")[1]);
       expect(node.data.branch).toBe(branchIndex % 7);
     }
@@ -114,7 +103,6 @@ describe("radial layout", () => {
   });
 
   it("never overlaps two boxes", () => {
-    // The old fixed-height layout let long nodes collide with their neighbours.
     const { nodes } = build();
     const rects = nodes.map(rectOf);
     for (let i = 0; i < rects.length; i += 1) {
@@ -143,7 +131,6 @@ describe("radial layout", () => {
     const collapsed = build(TREE, new Set(["root-0"]));
     expect(collapsed.nodes.length).toBe(expanded.nodes.length - 2);
     expect(collapsed.nodes.find((node) => node.id === "root-0").data.collapsed).toBe(true);
-    // ...and no edge is left dangling to the hidden children.
     const ids = new Set(collapsed.nodes.map((node) => node.id));
     for (const edge of collapsed.edges) expect(ids.has(edge.target)).toBe(true);
   });
@@ -172,7 +159,6 @@ describe("focus dimming", () => {
 
     expect(branchOne.every((node) => node.data.dimmed === false)).toBe(true);
     expect(others.every((node) => node.data.dimmed === true)).toBe(true);
-    // The root belongs to no branch, so it stays legible.
     expect(nodes.find((node) => node.id === "root").data.dimmed).toBe(false);
   });
 });

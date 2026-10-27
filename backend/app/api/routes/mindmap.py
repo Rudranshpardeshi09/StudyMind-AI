@@ -1,5 +1,3 @@
-"""Mind-map endpoints. Every operation is scoped to the calling user."""
-
 import asyncio
 import logging
 

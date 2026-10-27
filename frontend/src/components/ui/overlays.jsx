@@ -1,11 +1,3 @@
-/**
- * Dialog, Sheet and ConfirmDialog.
- *
- * These replace window.alert / window.confirm, which were unstyled, unlabelable
- * and inconsistent across platforms. Radix handles focus trapping, escape, and
- * returning focus to the trigger.
- */
-
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
@@ -13,8 +5,7 @@ import { X } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-/* ---------------------------------------------------------------- dialog */
+import { toMessage } from "@/services/http";
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -73,8 +64,6 @@ export function DialogFooter({ className, ...props }) {
   );
 }
 
-/* ----------------------------------------------------------------- sheet */
-
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
 export const SheetClose = DialogPrimitive.Close;
@@ -115,7 +104,6 @@ export const SheetContent = React.forwardRef(
                 {description}
               </DialogPrimitive.Description>
             ) : (
-              // Radix requires a description node for accessibility.
               <DialogPrimitive.Description className="sr-only">
                 {title}
               </DialogPrimitive.Description>
@@ -135,12 +123,6 @@ export const SheetContent = React.forwardRef(
 );
 SheetContent.displayName = "SheetContent";
 
-/* -------------------------------------------------------- confirm dialog */
-
-/**
- * Destructive confirmation. Replaces window.confirm for deleting documents,
- * chats and mind maps, and for the library reset.
- */
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -152,8 +134,34 @@ export function ConfirmDialog({
   loading = false,
   destructive = true,
 }) {
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const busy = loading || pending;
+
+  React.useEffect(() => {
+    if (!open) setError(null);
+  }, [open]);
+
+  const confirm = async () => {
+    if (busy) return;
+    setPending(true);
+    setError(null);
+    try {
+      await onConfirm?.();
+    } catch (confirmError) {
+      setError(toMessage(confirmError));
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
-    <AlertDialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+    <AlertDialogPrimitive.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (!busy) onOpenChange?.(next);
+      }}
+    >
       <AlertDialogPrimitive.Portal>
         <AlertDialogPrimitive.Overlay className={overlayClasses} />
         <AlertDialogPrimitive.Content
@@ -169,9 +177,14 @@ export function ConfirmDialog({
           <AlertDialogPrimitive.Description className="mt-1.5 text-sm text-muted-foreground">
             {description}
           </AlertDialogPrimitive.Description>
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {error}
+            </p>
+          )}
           <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogPrimitive.Cancel asChild>
-              <Button variant="outline" disabled={loading}>
+              <Button variant="outline" disabled={busy}>
                 {cancelLabel}
               </Button>
             </AlertDialogPrimitive.Cancel>
@@ -181,9 +194,9 @@ export function ConfirmDialog({
               )}
               onClick={(event) => {
                 event.preventDefault();
-                onConfirm?.();
+                confirm();
               }}
-              disabled={loading}
+              disabled={busy}
             >
               {confirmLabel}
             </AlertDialogPrimitive.Action>

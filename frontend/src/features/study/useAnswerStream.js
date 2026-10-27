@@ -1,27 +1,13 @@
-/**
- * Drives one answer generation and exposes the stages the backend actually
- * reported.
- *
- * The contract that matters: a stage is only ever marked complete when its
- * event has arrived. Nothing advances on a timer, and no percentage is
- * synthesised. If the stream dies mid-flight the last reached stage stays
- * "active" and the turn goes to `failed` — it never silently completes.
- */
-
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { studyApi } from "@/services/api";
 
-/**
- * The pipeline's stage vocabulary, in the order the backend emits it.
- * `label` is what the user reads while the stage is running.
- */
 export const STAGES = [
   { id: "preparing", label: "Understanding your question" },
   { id: "retrieving", label: "Searching your study material" },
   { id: "analyzing", label: "Finding relevant sections" },
   { id: "generating", label: "Building your answer" },
-  { id: "validating", label: "Checking citations" },
+  { id: "validating", label: "Preparing citations" },
 ];
 
 const STAGE_INDEX = new Map(STAGES.map((stage, index) => [stage.id, index]));
@@ -35,24 +21,35 @@ const IDLE = {
 };
 
 export function useAnswerStream() {
-  const [state, setState] = useState(IDLE);
+  const [state, setStateRaw] = useState(IDLE);
   const abortRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  const setState = useCallback((update) => {
+    if (mountedRef.current) setStateRaw(update);
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.();
+      abortRef.current = null;
+    };
+  }, []);
 
   const reset = useCallback(() => {
     abortRef.current?.();
     abortRef.current = null;
     setState(IDLE);
-  }, []);
+  }, [setState]);
 
   const cancel = useCallback(() => {
     abortRef.current?.();
     abortRef.current = null;
     setState((prev) => ({ ...prev, status: "cancelled", activeStage: null }));
-  }, []);
+  }, [setState]);
 
-  /**
-   * @returns {Promise<{ok: boolean, result?: object, error?: string, cancelled?: boolean}>}
-   */
   const ask = useCallback((payload) => {
     setState({ ...IDLE, status: "streaming" });
 
@@ -74,7 +71,7 @@ export function useAnswerStream() {
               ...prev,
               status: "completed",
               activeStage: null,
-              reachedIndex: STAGES.length, // every stage genuinely finished
+              reachedIndex: STAGES.length,
             }));
             finish({ ok: true, result: event.result });
             return;
@@ -98,11 +95,9 @@ export function useAnswerStream() {
             ...prev,
             status: "streaming",
             activeStage: stage,
-            // Stages before this one are now genuinely complete.
             reachedIndex: Math.max(prev.reachedIndex, index),
             detail: {
               ...prev.detail,
-              // Only values the backend sent. Absent means not shown.
               ...(event.document_count !== undefined && {
                 documentCount: event.document_count,
               }),
@@ -130,7 +125,7 @@ export function useAnswerStream() {
         finish({ ok: false, cancelled: true });
       };
     });
-  }, []);
+  }, [setState]);
 
   return { ...state, ask, cancel, reset };
 }

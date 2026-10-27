@@ -20,7 +20,8 @@ function applyTheme(theme) {
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) ?? "system";
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return ORDER.includes(stored) ? stored : "system";
     } catch {
       return "system";
     }
@@ -31,11 +32,9 @@ export function ThemeProvider({ children }) {
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {
-      /* per-viewer convenience only */
     }
   }, [theme]);
 
-  // Follow the OS while the user has not made an explicit choice.
   useEffect(() => {
     if (theme !== "system") return undefined;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -44,9 +43,13 @@ export function ThemeProvider({ children }) {
     return () => media.removeEventListener("change", onChange);
   }, [theme]);
 
+  const setTheme = useCallback((next) => {
+    setThemeState(ORDER.includes(next) ? next : "system");
+  }, []);
+
   const value = useMemo(
-    () => ({ theme, setTheme: setThemeState }),
-    [theme]
+    () => ({ theme, setTheme }),
+    [theme, setTheme]
   );
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
@@ -62,7 +65,7 @@ const LABELS = { light: "Light", dark: "Dark", system: "System" };
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const Icon = ICONS[theme];
+  const Icon = ICONS[theme] ?? Monitor;
 
   const cycle = useCallback(() => {
     setTheme(ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length]);

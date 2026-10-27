@@ -1,11 +1,3 @@
-/**
- * The honesty guarantee for answer progress.
- *
- * A stage may only be shown as complete once its event has arrived. These tests
- * exist because "don't fake progress" is a requirement that is easy to
- * regress silently.
- */
-
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -47,7 +39,6 @@ describe("useAnswerStream", () => {
       result.current.ask({ question: "q" });
     });
     expect(result.current.status).toBe("streaming");
-    // Nothing has been reported yet, so nothing may be shown as done.
     expect(result.current.reachedIndex).toBe(-1);
 
     emit({ stage: "preparing" });
@@ -67,7 +58,7 @@ describe("useAnswerStream", () => {
     });
     emit({ stage: "analyzing" });
     const reached = result.current.reachedIndex;
-    emit({ stage: "preparing" }); // out-of-order event
+    emit({ stage: "preparing" });
     expect(result.current.reachedIndex).toBe(reached);
   });
 
@@ -77,7 +68,6 @@ describe("useAnswerStream", () => {
       result.current.ask({ question: "q" });
     });
     emit({ stage: "generating" });
-    // No passage_count in the event, so none is invented.
     expect(result.current.detail.passageCount).toBeUndefined();
 
     emit({ stage: "generating", passage_count: 6, documents: ["bio.pdf"] });
@@ -116,7 +106,6 @@ describe("useAnswerStream", () => {
       error: "No documents are ready yet.",
     });
     expect(result.current.status).toBe("failed");
-    // Still only the one stage that genuinely happened.
     expect(result.current.reachedIndex).toBe(0);
   });
 
@@ -144,5 +133,16 @@ describe("useAnswerStream", () => {
     await expect(promise).resolves.toEqual({ ok: false, cancelled: true });
     expect(handlers.aborted).toBe(true);
     expect(result.current.status).toBe("cancelled");
+  });
+
+  it("aborts the request when the component unmounts", async () => {
+    const { result, unmount } = renderHook(() => useAnswerStream());
+    let promise;
+    act(() => {
+      promise = result.current.ask({ question: "q" });
+    });
+    unmount();
+    await expect(promise).resolves.toEqual({ ok: false, cancelled: true });
+    expect(handlers.aborted).toBe(true);
   });
 });

@@ -1,15 +1,3 @@
-/**
- * The waiting state for an answer.
- *
- * Design rules, in priority order:
- *  1. Never claim a stage finished before its event arrived.
- *  2. Only show numbers the backend actually sent (passage count, document
- *     count). If a value is absent, the line is absent.
- *  3. Show the stages reached and the one running — not the ones still to come,
- *     which would invite reading the list as a progress bar.
- *  4. Elapsed time is measured, not estimated. No percentage anywhere.
- */
-
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, Loader2, X } from "lucide-react";
@@ -28,7 +16,6 @@ function ElapsedTime({ startedAt }) {
     return () => clearInterval(id);
   }, [startedAt]);
 
-  // Only appears once the wait is long enough to be worth acknowledging.
   if (seconds < 4) return null;
   return (
     <span className="tabular text-xs text-muted-foreground">{seconds}s</span>
@@ -75,10 +62,6 @@ function StageRow({ stage, status, detail, reduced }) {
   );
 }
 
-/**
- * Build the sub-label for a stage, using only values the backend supplied.
- * Returns null when there is nothing true to say.
- */
 function detailFor(stageId, detail) {
   if (stageId === "retrieving" && detail.documentCount) {
     const count = detail.documentCount;
@@ -108,8 +91,6 @@ export default function AnswerProgress({
   const reduced = useReducedMotion();
   const activeIndex = STAGES.findIndex((stage) => stage.id === activeStage);
 
-  // Everything reached, plus the one currently running. Future stages are not
-  // rendered — the reader should not be able to count down to completion.
   const visible = STAGES.slice(0, Math.max(reachedIndex + 1, activeIndex + 1));
 
   return (
@@ -119,8 +100,6 @@ export default function AnswerProgress({
       exit={reduced ? undefined : { opacity: 0 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
       className="rounded-lg border border-border bg-surface p-4"
-      // The transcript announces the final answer; per-stage chatter would be
-      // noise for a screen reader, so stages are not individually announced.
       aria-hidden="true"
     >
       <div className="mb-3 flex items-center justify-between gap-3">

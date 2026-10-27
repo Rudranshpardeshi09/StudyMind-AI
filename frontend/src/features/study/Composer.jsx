@@ -8,16 +8,6 @@ import { cn } from "@/lib/utils";
 const MAX_CHARS = 1000;
 const COUNTER_FROM = 800;
 
-/**
- * Message composer.
- *
- * The previous version used a single-line <input> while checking !e.shiftKey,
- * so the documented Shift+Enter newline was impossible. This is an
- * auto-growing textarea: Enter sends, Shift+Enter inserts a newline.
- *
- * A failed send must never lose what was typed, so the parent restores the
- * draft through `restoreValue` rather than the composer clearing optimistically.
- */
 export default function Composer({
   onSend,
   onCancel,
@@ -33,7 +23,6 @@ export default function Composer({
     if (restoreValue) setValue(restoreValue);
   }, [restoreValue]);
 
-  // Grow with content up to a ceiling, then scroll.
   const resize = useCallback(() => {
     const node = textareaRef.current;
     if (!node) return;

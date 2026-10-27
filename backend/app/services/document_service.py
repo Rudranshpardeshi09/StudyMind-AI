@@ -1,10 +1,3 @@
-"""Document records and ownership.
-
-Every public function takes a UserContext first and filters on user_id, so a
-caller cannot address a document they do not own. Ownership is enforced in SQL,
-not by a check the caller may forget.
-"""
-
 import logging
 import uuid
 from typing import Optional
@@ -14,8 +7,8 @@ from app.db.auth_db import get_connection
 
 logger = logging.getLogger(__name__)
 
-VALID_STATUSES = {"queued", "uploading", "parsing", "embedding", "ready", "failed"}
-ACTIVE_STATUSES = ("queued", "uploading", "parsing", "embedding")
+VALID_STATUSES = {"queued", "parsing", "embedding", "ready", "failed"}
+ACTIVE_STATUSES = ("queued", "parsing", "embedding")
 
 
 def _row_to_dict(row) -> dict:
@@ -41,7 +34,6 @@ def create_document(
     byte_size: int,
     content_hash: Optional[str],
 ) -> dict:
-    """Insert or reset a document row. Re-uploading the same name restarts it."""
     doc_id = uuid.uuid4().hex
     with get_connection() as conn:
         conn.execute(
@@ -97,7 +89,6 @@ def get_document_by_stored_name(ctx: UserContext, stored_name: str) -> Optional[
 
 
 def find_by_hash(ctx: UserContext, content_hash: str) -> Optional[dict]:
-    """Content-level dedupe: an identical file is already indexed for this user."""
     if not content_hash:
         return None
     with get_connection() as conn:
@@ -129,7 +120,6 @@ def set_status(
     chunk_count: Optional[int] = None,
     error: Optional[str] = None,
 ) -> None:
-    """Persist a lifecycle transition. Status is never inferred from the disk."""
     if status not in VALID_STATUSES:
         raise ValueError("Unknown document status: " + str(status))
 
@@ -153,7 +143,6 @@ def set_status(
 
 
 def replace_chunks(document_id: str, chunks: list[dict]) -> None:
-    """Record chunk ids for a document, which is what enables incremental delete."""
     with get_connection() as conn:
         conn.execute("DELETE FROM document_chunks WHERE document_id = ?", (document_id,))
         if chunks:
@@ -185,7 +174,6 @@ def get_chunk_ids(document_id: str) -> list[str]:
 
 
 def delete_document(ctx: UserContext, document_id: str) -> bool:
-    """Delete the row (chunks cascade). Caller removes file + index entries."""
     with get_connection() as conn:
         cur = conn.execute(
             "DELETE FROM documents WHERE id = ? AND user_id = ?",
@@ -203,11 +191,6 @@ def delete_all_documents(ctx: UserContext) -> int:
 
 
 def resolve_selection(ctx: UserContext, identifiers: Optional[list[str]]) -> list[dict]:
-    """Map document ids or stored names to owned, ready documents.
-
-    Accepting names as well as ids keeps older clients working, and lets saved
-    chat sessions (which persisted names) still resolve their document set.
-    """
     if not identifiers:
         return []
     wanted = {str(i).strip() for i in identifiers if str(i).strip()}
@@ -229,14 +212,14 @@ def resolve_selection(ctx: UserContext, identifiers: Optional[list[str]]) -> lis
     ]
 
 
-def stuck_active_documents(ctx: UserContext) -> list[dict]:
-    """Documents left mid-pipeline by a restart, so they can be surfaced for retry."""
+def fail_interrupted_documents() -> int:
     placeholders = ",".join(["?"] * len(ACTIVE_STATUSES))
     with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT * FROM documents WHERE user_id = ? AND status IN ("
-            + placeholders
-            + ")",
-            (ctx.user_id, *ACTIVE_STATUSES),
-        ).fetchall()
-    return [_row_to_dict(r) for r in rows]
+        cur = conn.execute(
+            "UPDATE documents SET status = 'failed', "
+            "error = 'Processing was interrupted. Retry this document.', "
+            "updated_at = datetime('now') WHERE status IN (" + placeholders + ")",
+            ACTIVE_STATUSES,
+        )
+        conn.commit()
+        return cur.rowcount

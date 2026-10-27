@@ -118,7 +118,6 @@ export default function Transcript({
     <div
       ref={viewportRef}
       className="min-h-0 flex-1 overflow-y-auto scrollbar-thin"
-      // Only the arriving answer is announced, not each stage.
       aria-live="polite"
       aria-atomic="false"
     >
@@ -176,8 +175,6 @@ export default function Transcript({
           )
         )}
 
-        {/* The placeholder enters the transcript immediately, so the
-            conversation never goes blank while an answer is generated. */}
         <AnimatePresence>
           {isStreaming && (
             <AnswerProgress

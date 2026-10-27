@@ -1,14 +1,3 @@
-"""Per-user FAISS index management.
-
-Each user owns an index under their own storage root, so retrieval cannot cross
-a tenant boundary even if a metadata filter is wrong. Indexes are held in a
-bounded LRU with a per-user lock, replacing the previous single process-wide
-index + global lock (which serialised every user's ingest behind every other).
-
-Chunk ids are used as the FAISS docstore ids, which is what makes incremental
-deletion possible instead of rebuilding the whole corpus.
-"""
-
 import logging
 import os
 import shutil
@@ -36,7 +25,6 @@ def _get_faiss_class():
 
 
 def get_embeddings():
-    """Load the embedding model once per process (it is expensive)."""
     global _embeddings_cache
     if _embeddings_cache is None:
         with _embeddings_lock:
@@ -56,7 +44,6 @@ def get_embeddings():
 
 
 def index_lock(user_id: int) -> threading.RLock:
-    """Per-user lock — one user's ingest must not block another's."""
     with _registry_lock:
         lock = _locks.get(user_id)
         if lock is None:
@@ -93,7 +80,6 @@ def _cache_put(user_id: int, db, fingerprint) -> None:
 
 
 def load_index(storage: UserStorage):
-    """Return this user's FAISS index, or None if they have not indexed anything."""
     user_id = storage.user_id
     fingerprint = _fingerprint(storage)
     if fingerprint is None:
@@ -113,7 +99,7 @@ def load_index(storage: UserStorage):
         db = FAISS.load_local(
             str(storage.index_dir),
             get_embeddings(),
-            allow_dangerous_deserialization=True,  # index.pkl is server-generated only
+            allow_dangerous_deserialization=True,
         )
         _cache_put(user_id, db, fingerprint)
         logger.info("Loaded index for user %s", user_id)
@@ -121,7 +107,6 @@ def load_index(storage: UserStorage):
 
 
 def _save_atomic(db, storage: UserStorage) -> None:
-    """Write the index via a temp dir + swap so a crash cannot leave it half-written."""
     tmp_dir = storage.root / "index.tmp"
     old_dir = storage.root / "index.old"
     shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -140,7 +125,6 @@ def _save_atomic(db, storage: UserStorage) -> None:
 
 
 def add_chunks(storage: UserStorage, chunks: list) -> int:
-    """Merge chunks into the user's index. Returns the number actually added."""
     if not chunks:
         return 0
 
@@ -170,7 +154,6 @@ def add_chunks(storage: UserStorage, chunks: list) -> int:
 
 
 def delete_chunks(storage: UserStorage, chunk_ids: list[str]) -> int:
-    """Remove specific chunks without touching any other document."""
     if not chunk_ids:
         return 0
 
@@ -183,7 +166,6 @@ def delete_chunks(storage: UserStorage, chunk_ids: list[str]) -> int:
         if not present:
             return 0
 
-        # Deleting every vector leaves an empty index FAISS cannot serialise.
         if len(present) >= len(db.docstore._dict):
             storage.delete_index()
             invalidate(storage.user_id)

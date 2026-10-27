@@ -1,11 +1,6 @@
-"""Document upload and lifecycle endpoints.
-
-All routes resolve documents by id scoped to the caller. Processing runs in a
-bounded thread pool; status lives on the document row rather than in process
-memory, so it survives a restart and is correct under more than one worker.
-"""
-
 import logging
+import os
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -28,8 +23,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ingest", tags=["Document Ingestion"])
 
-# Bounded so a burst of uploads cannot exhaust memory. Per-user index locks live
-# in the vector store, so one user's ingest no longer blocks another's.
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ingest_")
 
 
@@ -55,7 +48,7 @@ async def upload_document(
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    safe_name = sanitize_filename(file.filename)  # validates extension too
+    safe_name = sanitize_filename(file.filename)
     if file.content_type and file.content_type not in settings.ALLOWED_FILE_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported file type")
 
@@ -70,28 +63,30 @@ async def upload_document(
     except UnsafePathError:
         raise HTTPException(status_code=400, detail="Invalid file name")
 
+    staging = ctx.storage.uploads_dir / f".{uuid.uuid4().hex}.part"
+    staging.parent.mkdir(parents=True, exist_ok=True)
     try:
-        size = save_upload_file(file, str(destination))
+        size = save_upload_file(file, str(staging))
     except HTTPException:
+        staging.unlink(missing_ok=True)
         raise
     except Exception:
+        staging.unlink(missing_ok=True)
         logger.exception("Failed to store upload for %s", ctx)
         raise HTTPException(status_code=500, detail="Failed to save file")
 
-    content_hash = hash_file(destination)
+    content_hash = hash_file(staging)
 
-    # Identical content already indexed for this user: link, do not re-embed.
     duplicate = docs.find_by_hash(ctx, content_hash)
     if duplicate and duplicate["stored_name"] != safe_name:
-        try:
-            destination.unlink()
-        except OSError:
-            pass
+        staging.unlink(missing_ok=True)
         return {
             "status": "duplicate",
             "document": duplicate,
             "message": f"Already indexed as {duplicate['original_name']}.",
         }
+
+    os.replace(staging, destination)
 
     record = docs.create_document(
         ctx,
@@ -115,11 +110,6 @@ async def ingest_status(
     filename: str | None = None,
     ctx: UserContext = Depends(get_user_context),
 ):
-    """Legacy status shape, keyed by stored name.
-
-    Retained so an older frontend keeps working; new clients should use
-    /ingest/documents, which returns ids.
-    """
     records = docs.list_documents(ctx)
     payload = {
         r["stored_name"]: {
@@ -178,11 +168,6 @@ async def delete_document_by_name(
     filename: str,
     ctx: UserContext = Depends(get_user_context),
 ):
-    """Legacy delete-by-name, kept so an older frontend keeps working.
-
-    Resolution is still scoped to the caller, so this cannot reach another
-    user's file the way the pre-tenancy version could.
-    """
     from urllib.parse import unquote
 
     try:

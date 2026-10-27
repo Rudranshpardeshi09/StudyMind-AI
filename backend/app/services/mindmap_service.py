@@ -1,10 +1,3 @@
-"""Mind-map generation and storage.
-
-Maps now live in SQLite with a user_id instead of loose JSON files in a shared
-directory, so listing, opening, renaming and deleting are all owner-scoped.
-Source documents are resolved through the caller's own storage.
-"""
-
 import json
 import logging
 import re
@@ -22,14 +15,12 @@ from app.services.gemini_llm import generate_text
 
 logger = logging.getLogger(__name__)
 
-MAX_STRUCTURE_CHARS = 24000  # was 8000, which only saw a textbook's front matter
+MAX_STRUCTURE_CHARS = 24000
 
 
 class MindMapError(ValueError):
-    """Raised with a message that is safe to show the user."""
+    pass
 
-
-# --- JSON tolerance (behaviour preserved) -----------------------------------
 
 def _extract_balanced_json_object(text: str) -> Optional[str]:
     start = text.find("{")
@@ -104,8 +95,6 @@ def _repair_json_with_llm(response_text: str, schema_hint: str) -> dict:
     return _parse_json_response(repaired)
 
 
-# --- source text ------------------------------------------------------------
-
 def _document_text(ctx: UserContext, document: dict) -> str:
     from app.services.ingestion_service import _load_documents
 
@@ -148,11 +137,8 @@ def get_text_from_sources(
     return "\n\n".join(chunks), label
 
 
-# --- structure --------------------------------------------------------------
-
 @lru_cache(maxsize=64)
 def _structure_for(cache_key: tuple) -> dict:
-    """Bounded cache. The previous module-level dict grew without limit."""
     _, _, text = cache_key
     prompt = f"""Analyze this document text and extract its hierarchical structure.
 
@@ -208,7 +194,6 @@ def extract_document_structure(ctx: UserContext, document_identifier: str) -> di
 
 
 def _filter_text_by_section(text: str, section_name: str) -> str:
-    """Take the span from a section heading to the next plausible heading."""
     if not section_name:
         return text
     lowered, target = text.lower(), section_name.lower()
@@ -219,8 +204,6 @@ def _filter_text_by_section(text: str, section_name: str) -> str:
     window_end = min(len(text), start + 8000)
     return text[window_start:window_end]
 
-
-# --- tree normalisation (behaviour preserved) -------------------------------
 
 def _normalize_description(value: str) -> str:
     cleaned = " ".join((value or "").split())
@@ -285,8 +268,6 @@ def _truncate_source_text(text: str, mode: str) -> str:
     limits = {"chapter": 5200, "topic": 3600}
     return text[: limits.get(mode, 6500)]
 
-
-# --- persistence ------------------------------------------------------------
 
 def _row_to_summary(row) -> dict:
     return {
@@ -366,8 +347,6 @@ def _save(ctx: UserContext, payload: dict, mode: str) -> None:
         )
         conn.commit()
 
-
-# --- generation -------------------------------------------------------------
 
 def generate_mindmap(
     ctx: UserContext,

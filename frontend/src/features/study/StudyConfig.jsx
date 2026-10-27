@@ -20,7 +20,6 @@ export const MARKS_OPTIONS = [
 
 function formatWhen(value) {
   if (!value) return "";
-  // SQLite datetime('now') is UTC without a zone marker.
   const parsed = new Date(value.includes("T") ? value : `${value}Z`);
   if (Number.isNaN(parsed.getTime())) return "";
   const minutes = Math.floor((Date.now() - parsed.getTime()) / 60000);
@@ -66,7 +65,6 @@ export default function StudyConfig({
 
   return (
     <div className="flex h-full flex-col divide-y divide-border">
-      {/* Documents ---------------------------------------------------- */}
       <Section
         title="Documents"
         action={
@@ -131,7 +129,6 @@ export default function StudyConfig({
         )}
       </Section>
 
-      {/* Answer length ------------------------------------------------ */}
       <Section title="Answer length">
         <div
           role="radiogroup"
@@ -162,7 +159,6 @@ export default function StudyConfig({
         </div>
       </Section>
 
-      {/* Syllabus ----------------------------------------------------- */}
       <Section
         title="Syllabus context"
         action={
@@ -191,7 +187,6 @@ export default function StudyConfig({
         />
       </Section>
 
-      {/* Chats -------------------------------------------------------- */}
       <div className="flex min-h-0 flex-1 flex-col">
         <Section
           title="Recent chats"
@@ -255,8 +250,8 @@ export default function StudyConfig({
         title="Delete this chat?"
         description={`"${pendingDelete?.title ?? ""}" and its messages will be removed. This cannot be undone.`}
         confirmLabel="Delete chat"
-        onConfirm={() => {
-          onDeleteSession(pendingDelete.id);
+        onConfirm={async () => {
+          await onDeleteSession(pendingDelete.id);
           setPendingDelete(null);
         }}
       />

@@ -1,14 +1,3 @@
-"""Question answering.
-
-Two endpoints over one pipeline:
-  POST /qa/ask        — JSON, unchanged response shape (plus richer citations)
-  POST /qa/ask/stream — Server-Sent Events carrying the real pipeline stages
-
-The streaming endpoint exists so the UI can show what the backend is actually
-doing. Every event it emits corresponds to a boundary the pipeline crossed; no
-stage is advanced on a timer.
-"""
-
 import asyncio
 import json
 import logging
@@ -22,7 +11,7 @@ from app.api.schemas.qa import QARequest, QAResponse
 from app.core.config import settings
 from app.core.context import UserContext
 from app.services import document_service as docs
-from app.services.chat_history_service import create_or_append_chat_turn
+from app.services.chat_history_service import create_or_append_chat_turn, get_chat_session
 from app.services.rag_service import run_rag_stages
 
 logger = logging.getLogger(__name__)
@@ -31,12 +20,20 @@ router = APIRouter(prefix="/qa", tags=["qa"])
 
 
 def _prepare(request: QARequest, ctx: UserContext) -> tuple[list[str], int, Optional[list]]:
-    """Validate the request and resolve its document selection to owned ids."""
     if request.chat_history and len(request.chat_history) > settings.MAX_CHAT_HISTORY:
         request.chat_history = request.chat_history[-settings.MAX_CHAT_HISTORY:]
 
-    selected = docs.resolve_selection(ctx, request.selected_identifiers())
+    requested = request.selected_identifiers()
+    selected = docs.resolve_selection(ctx, requested)
     document_ids = [d["id"] for d in selected]
+    if requested and not document_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="None of the selected documents are ready. Pick a ready document or clear the selection.",
+        )
+
+    if request.session_id and get_chat_session(ctx.user_id, request.session_id) is None:
+        raise HTTPException(status_code=404, detail="Chat session not found")
 
     ready_total = sum(1 for d in docs.list_documents(ctx) if d["status"] == "ready")
     if ready_total == 0:
@@ -159,8 +156,6 @@ async def ask_question_stream(
 
                 if event.get("stage") == "completed":
                     final_result = event["result"]
-                    # Persist before telling the client it is done, so a reload
-                    # never loses an answer the user has already seen.
                     try:
                         saved = await asyncio.to_thread(
                             create_or_append_chat_turn,
@@ -192,6 +187,6 @@ async def ask_question_stream(
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # ask nginx-style proxies not to buffer
+            "X-Accel-Buffering": "no",
         },
     )

@@ -30,14 +30,6 @@ def sanitize_filename(filename: str) -> str:
     return safe_name
 
 
-def ensure_safe_child_path(base_dir: str, filename: str) -> str:
-    candidate = os.path.abspath(os.path.join(base_dir, filename))
-    base_path = os.path.abspath(base_dir)
-    if os.path.commonpath([candidate, base_path]) != base_path:
-        raise HTTPException(status_code=400, detail="Invalid file path")
-    return candidate
-
-
 def save_upload_file(upload: UploadFile, destination: str) -> int:
     size = 0
     upload.file.seek(0)

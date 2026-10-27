@@ -28,12 +28,10 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/primitives";
+import { EmptyState, ErrorState } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import SketchyEdge from "./SketchyEdge";
 import { roughRect } from "./sketch";
-
-/* ----------------------------------------------------------------- sizing */
 
 const NODE_WIDTHS = [300, 264, 238, 216];
 const H_GAP = 130;
@@ -41,15 +39,6 @@ const V_GAP = 34;
 
 const widthFor = (depth) => NODE_WIDTHS[Math.min(depth, NODE_WIDTHS.length - 1)];
 
-/**
- * Estimate a node's rendered height from its content.
- *
- * The old viewer used one fixed height per depth, which left short nodes
- * floating in dead space and let long ones overlap their neighbours. Measuring
- * is not an option here because layout runs before paint, so this approximates
- * from character counts — and because the node is then pinned to exactly this
- * height, the hand-drawn border can be generated at a size that always matches.
- */
 function heightFor(node, depth) {
   const width = widthFor(depth);
   const titleSize = depth === 0 ? 17 : depth === 1 ? 15 : 14;
@@ -62,28 +51,22 @@ function heightFor(node, depth) {
     : 0;
 
   const bullets = node.bullet_points ?? [];
-  // Chips wrap roughly two per row at these widths.
   const bulletRows = bullets.length ? Math.ceil(bullets.length / 2) : 0;
 
   return Math.round(
-    24 + // padding
+    24 +
       titleLines * (titleSize + 6) +
       (bodyLines ? 6 + bodyLines * 17 : 0) +
       (bulletRows ? 8 + bulletRows * 24 : 0)
   );
 }
 
-/* ---------------------------------------------------------------- palette */
-
 const BRANCH_COUNT = 7;
 const branchVar = (index) => (index === null ? "--branch-root-line" : `--branch-${index}-line`);
 const branchLine = (index) => `hsl(var(${branchVar(index)}))`;
 const branchFill = (index) =>
   index === null ? "hsl(var(--branch-root-fill))" : `hsl(var(--branch-${index}-fill))`;
-/** Alpha has to sit outside var(), not inside it. */
 const branchTint = (index, alpha) => `hsl(var(${branchVar(index)}) / ${alpha})`;
-
-/* ------------------------------------------------------------------- node */
 
 const MindMapNode = memo(function MindMapNode({ id, data }) {
   const {
@@ -106,7 +89,6 @@ const MindMapNode = memo(function MindMapNode({ id, data }) {
   const fill = branchFill(branch);
   const hasChildren = childCount > 0;
 
-  // Two overlapping wobbly outlines, regenerated only when the box resizes.
   const outlines = useMemo(
     () => (sketch ? roughRect(width, height, depth === 0 ? 18 : 12, id) : null),
     [sketch, width, height, depth, id]
@@ -130,7 +112,6 @@ const MindMapNode = memo(function MindMapNode({ id, data }) {
         }
       }}
     >
-      {/* Handles are what React Flow anchors edges to; they stay invisible. */}
       <Handle
         type="target"
         position={side === "left" ? Position.Right : Position.Left}
@@ -242,16 +223,6 @@ const MindMapNode = memo(function MindMapNode({ id, data }) {
 const nodeTypes = { mindMapNode: MindMapNode };
 const edgeTypes = { sketchy: SketchyEdge };
 
-/* ----------------------------------------------------------------- layout */
-
-/**
- * Radial layout: the root sits in the middle and its branches fan out to both
- * sides, the way someone would actually draw a mind map on a whiteboard.
- *
- * The previous layout ran strictly left-to-right, so a wide map turned into a
- * long horizontal ribbon with every branch the same grey — which is why it read
- * as a list of disconnected boxes rather than a structure.
- */
 export function buildRadialFlow(tree, collapsed, toggle, { sketch, focusBranch }) {
   const nodes = [];
   const edges = [];
@@ -259,7 +230,6 @@ export function buildRadialFlow(tree, collapsed, toggle, { sketch, focusBranch }
 
   const isCollapsed = (id) => collapsed.has(id);
 
-  // --- measure ---
   function measure(node, id, depth) {
     const own = heightFor(node, depth);
     const children = isCollapsed(id) ? [] : node.children ?? [];
@@ -276,21 +246,15 @@ export function buildRadialFlow(tree, collapsed, toggle, { sketch, focusBranch }
   const rootMeasure = measure(tree, "root", 0);
   const rootChildren = isCollapsed("root") ? [] : tree.children ?? [];
 
-  // --- split branches across the two sides, preserving reading order ---
   const half = Math.ceil(rootChildren.length / 2);
   const sides = rootChildren.map((_, index) =>
     index < half ? "right" : "left"
   );
 
-  // --- place ---
-  // `info` is this node's pre-computed measurement. Passing it down keeps the
-  // whole layout linear; re-measuring inside place() made it quadratic.
   function place(node, id, depth, side, branch, xOuter, yTop, band, parentId, info) {
     const width = widthFor(depth);
     const height = heightFor(node, depth);
     const children = isCollapsed(id) ? [] : node.children ?? [];
-    // Right side grows rightwards from xOuter; left side grows leftwards, so
-    // its x is the outer edge minus the box width.
     const x = side === "left" ? xOuter - width : xOuter;
     const y = yTop + band / 2 - height / 2;
 
@@ -356,7 +320,6 @@ export function buildRadialFlow(tree, collapsed, toggle, { sketch, focusBranch }
     });
   }
 
-  // Root, centred on the origin.
   const rootWidth = widthFor(0);
   const rootHeight = heightFor(tree, 0);
   nodes.push({
@@ -382,7 +345,6 @@ export function buildRadialFlow(tree, collapsed, toggle, { sketch, focusBranch }
     },
   });
 
-  // Stack each side independently, vertically centred on the root.
   ["right", "left"].forEach((side) => {
     const indices = sides
       .map((value, index) => (value === side ? index : -1))
@@ -417,8 +379,6 @@ export function buildRadialFlow(tree, collapsed, toggle, { sketch, focusBranch }
 
   return { nodes, edges };
 }
-
-/* ---------------------------------------------------------------- toolbar */
 
 function ViewerToolbar({ title, sketch, onToggleSketch, onExport, fullscreen, onToggleFullscreen }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -508,8 +468,6 @@ function ViewerToolbar({ title, sketch, onToggleSketch, onExport, fullscreen, on
   );
 }
 
-/* ------------------------------------------------------------------- view */
-
 const SKETCH_KEY = "sm_mindmap_sketch";
 
 export default function MindMapViewer({ data, loading, fullscreen, onToggleFullscreen }) {
@@ -522,6 +480,7 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
       return true;
     }
   });
+  const [exportError, setExportError] = useState(null);
   const deferred = useDeferredValue(data);
 
   const toggleSketch = useCallback(() => {
@@ -529,7 +488,6 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
       try {
         localStorage.setItem(SKETCH_KEY, value ? "0" : "1");
       } catch {
-        /* per-viewer convenience only */
       }
       return !value;
     });
@@ -557,7 +515,7 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
     [deferred]
   );
 
-  const exportMap = useCallback(
+  const exportMapUnsafe = useCallback(
     async (format) => {
       if (!deferred) return;
       const filename = (deferred.title || "mindmap").replace(/[^\w -]/g, "").slice(0, 60);
@@ -607,6 +565,18 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
       pdf.save(`${filename}.pdf`);
     },
     [deferred]
+  );
+
+  const exportMap = useCallback(
+    async (format) => {
+      setExportError(null);
+      try {
+        await exportMapUnsafe(format);
+      } catch {
+        setExportError({ format, message: "The export failed. Please try again." });
+      }
+    },
+    [exportMapUnsafe]
   );
 
   if (loading) {
@@ -672,8 +642,6 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
           nodeStrokeWidth={0}
         />
 
-        {/* Branch legend: hovering a branch dims the rest, which is how you
-            follow one thread through a dense map. */}
         {branches.length > 1 && (
           <Panel position="bottom-left" className="max-w-[min(calc(100vw-2rem),22rem)]">
             <div className="flex flex-wrap gap-1 rounded-md border border-border bg-surface/90 p-1.5 backdrop-blur">
@@ -704,6 +672,16 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
                 </button>
               ))}
             </div>
+          </Panel>
+        )}
+
+        {exportError && (
+          <Panel position="top-left" className="!mt-14 max-w-[min(calc(100vw-3.5rem),20rem)]">
+            <ErrorState
+              title="Export failed"
+              message={exportError.message}
+              onRetry={() => exportMap(exportError.format)}
+            />
           </Panel>
         )}
 

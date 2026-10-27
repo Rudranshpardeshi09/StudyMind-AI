@@ -1,16 +1,3 @@
-"""Retrieval-augmented answering.
-
-The pipeline is written as a generator that yields a typed event at each real
-boundary it crosses. The streaming endpoint forwards those events; the JSON
-endpoint drains the same generator, so there is one pipeline rather than two and
-no stage can be reported that did not actually happen.
-
-Ranking change from the previous version: lexical overlap is now blended into
-the score instead of being used as an exclusion filter. The old behaviour
-discarded any chunk below a fixed word-overlap threshold, which threw away
-correctly-retrieved passages that answered the question in different words.
-"""
-
 import logging
 import os
 import re
@@ -41,8 +28,6 @@ STANDALONE_QUESTION_PREFIXES = (
     "define ", "describe ", "explain ", "list ", "compare ", "differentiate ",
 )
 
-
-# --- query construction (behaviour preserved) -------------------------------
 
 def _normalize_text(value: str) -> str:
     return " ".join((value or "").split()).strip()
@@ -102,8 +87,6 @@ def build_search_query(
     return " ".join(p for p in parts if p).strip()
 
 
-# --- scoring ----------------------------------------------------------------
-
 def lexical_overlap(doc_content: str, question_keywords: set) -> float:
     if not question_keywords:
         return 0.0
@@ -111,10 +94,6 @@ def lexical_overlap(doc_content: str, question_keywords: set) -> float:
 
 
 def _semantic_score(distance: float) -> float:
-    """Convert FAISS L2 distance over normalised vectors into a 0-1 similarity.
-
-    With unit-length embeddings, d^2 = 2 - 2*cos, so cos = 1 - d^2/2.
-    """
     try:
         similarity = 1.0 - (float(distance) ** 2) / 2.0
     except (TypeError, ValueError):
@@ -123,7 +102,6 @@ def _semantic_score(distance: float) -> float:
 
 
 def blend_and_rank(scored_docs: list, question: str) -> list:
-    """Rank by semantic score with lexical overlap as a tie-breaker, never a filter."""
     if not scored_docs:
         return []
     keywords = extract_keywords(question)
@@ -159,10 +137,7 @@ def _deduplicate(docs_list: list) -> list:
     return unique
 
 
-# --- context ----------------------------------------------------------------
-
 def _context_budget(marks: int) -> int:
-    """Longer answers genuinely receive more evidence, not just a longer prompt."""
     base = settings.MAX_CONTEXT_CHARS
     if marks <= 3:
         return int(base * 0.55)
@@ -197,7 +172,6 @@ def _page_number(doc) -> int:
 
 
 def _build_sources(top_docs: list) -> list[dict]:
-    """Citations now name the document they came from, not just a page number."""
     sources = []
     for doc in top_docs:
         meta = doc.metadata
@@ -214,29 +188,22 @@ def _build_sources(top_docs: list) -> list[dict]:
     return sources
 
 
-# --- retrieval --------------------------------------------------------------
-
 def _retrieve(index, query: str, k: int, document_ids: Optional[list[str]]):
-    """Fetch scored candidates, restricting to selected documents during search."""
     fetch_k = max(k * 3, settings.RETRIEVER_FETCH_K)
     search_filter = None
     if document_ids:
         allowed = set(document_ids)
-        # LangChain FAISS accepts a callable filter over metadata.
         search_filter = lambda meta: meta.get("document_id") in allowed  # noqa: E731
 
     try:
         return index.similarity_search_with_score(query, k=fetch_k, filter=search_filter)
     except TypeError:
-        # Older langchain-community rejects a callable filter.
         results = index.similarity_search_with_score(query, k=fetch_k)
         if not document_ids:
             return results
         allowed = set(document_ids)
         return [(d, s) for d, s in results if d.metadata.get("document_id") in allowed]
 
-
-# --- pipeline ---------------------------------------------------------------
 
 def run_rag_stages(
     ctx: UserContext,
@@ -248,7 +215,6 @@ def run_rag_stages(
     document_ids: Optional[list[str]] = None,
     document_count: int = 0,
 ) -> Iterator[dict]:
-    """Yield a stage event at each real boundary, then a final result event."""
     started = time.perf_counter()
 
     yield {"stage": "preparing"}
@@ -294,7 +260,7 @@ def run_rag_stages(
     passage_pages = sorted({_page_number(d) for d in top_docs})
     yield {
         "stage": "generating",
-        "passage_count": len(top_docs),          # real length of top_docs
+        "passage_count": len(top_docs),
         "pages": passage_pages,
         "documents": sorted({
             os.path.basename(str(d.metadata.get("source", ""))) for d in top_docs
@@ -327,7 +293,6 @@ def run_rag_stages(
         if not answer:
             raise ValueError("Empty response from the model")
     except Exception:
-        # The provider message can contain request details; keep it out of the UI.
         logger.exception("Answer generation failed for user %s", ctx.user_id)
         yield {
             "stage": "failed",
@@ -349,22 +314,3 @@ def run_rag_stages(
             "error": False,
         },
     }
-
-
-def run_rag(ctx: UserContext, question: str, **kwargs) -> dict:
-    """Drain the stage generator and return the final payload (non-streaming path)."""
-    final = None
-    for event in run_rag_stages(ctx, question, **kwargs):
-        if event.get("stage") == "completed":
-            final = event["result"]
-        elif event.get("stage") == "failed":
-            return {
-                "answer": event.get("error", "Unable to answer."),
-                "pages": [],
-                "sources": [],
-                "error": True,
-                "code": event.get("code"),
-            }
-    if final is None:
-        return {"answer": "Unable to answer.", "pages": [], "sources": [], "error": True}
-    return final
