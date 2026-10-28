@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useMemo, useState } from "react";
+import { memo, useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -11,27 +11,31 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Download,
   FileImage,
   FileJson,
   FileText,
-  Loader2,
   Maximize2,
   Minimize2,
-  Network,
   PenLine,
   Scan,
 } from "lucide-react";
 
+import { GridPaper } from "@/components/art";
 import { Button } from "@/components/ui/button";
-import { EmptyState, ErrorState } from "@/components/ui/primitives";
+import { ErrorState, Eyebrow } from "@/components/ui/primitives";
+import { ThinkingStage } from "@/components/wait";
+import { springPop } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import EmptyCanvasArt from "./EmptyCanvasArt";
 import SketchyEdge from "./SketchyEdge";
 import { roughRect } from "./sketch";
+import "./mindmap.css";
 
 const NODE_WIDTHS = [300, 264, 238, 216];
 const H_GAP = 130;
@@ -39,34 +43,126 @@ const V_GAP = 34;
 
 const widthFor = (depth) => NODE_WIDTHS[Math.min(depth, NODE_WIDTHS.length - 1)];
 
+const TITLE_TYPE = [
+  { size: 22, line: 25, ratio: 0.55 },
+  { size: 17, line: 21, ratio: 0.55 },
+  { size: 13.5, line: 18, ratio: 0.53 },
+];
+
 function heightFor(node, depth) {
   const width = widthFor(depth);
-  const titleSize = depth === 0 ? 17 : depth === 1 ? 15 : 14;
-  const titleCols = Math.max(10, Math.floor(width / (titleSize * 0.52)));
-  const bodyCols = Math.max(12, Math.floor((width - 28) / 6.4));
+  const inner = width - 32;
+  const type = TITLE_TYPE[Math.min(depth, TITLE_TYPE.length - 1)];
+  const hasChildren = (node.children ?? []).length > 0;
+  const titleCols = Math.max(
+    8,
+    Math.floor((inner - (hasChildren ? 22 : 0)) / (type.size * type.ratio))
+  );
+  const titleLines = Math.ceil(((node.title?.length ?? 0) * 1.08) / titleCols) || 1;
 
-  const titleLines = Math.ceil((node.title?.length ?? 0) / titleCols) || 1;
-  const bodyLines = node.description
-    ? Math.ceil(node.description.length / bodyCols)
-    : 0;
+  const bodySize = depth === 0 ? 13 : depth === 1 ? 12.5 : 12;
+  const bodyLine = depth === 0 ? 18 : 17;
+  const bodyCols = Math.max(12, Math.floor(inner / (bodySize * 0.5)));
+  const bodyLines = node.description ? Math.ceil((node.description.length * 1.08) / bodyCols) : 0;
 
-  const bullets = node.bullet_points ?? [];
-  const bulletRows = bullets.length ? Math.ceil(bullets.length / 2) : 0;
+  let bulletRows = 0;
+  let used = inner;
+  for (const point of node.bullet_points ?? []) {
+    const chip = Math.min(inner, String(point).length * 6.7 + 14);
+    if (used + 4 + chip > inner) {
+      bulletRows += 1;
+      used = chip;
+    } else {
+      used += 4 + chip;
+    }
+  }
+
+  const eyebrow = depth <= 1 ? 22 : 0;
 
   return Math.round(
-    24 +
-      titleLines * (titleSize + 6) +
-      (bodyLines ? 6 + bodyLines * 17 : 0) +
-      (bulletRows ? 8 + bulletRows * 24 : 0)
+    26 +
+      eyebrow +
+      titleLines * type.line +
+      (bodyLines ? 6 + bodyLines * bodyLine : 0) +
+      (bulletRows ? 10 + bulletRows * 22 - 4 : 0)
   );
 }
 
 const BRANCH_COUNT = 7;
 const branchVar = (index) => (index === null ? "--branch-root-line" : `--branch-${index}-line`);
 const branchLine = (index) => `hsl(var(${branchVar(index)}))`;
-const branchFill = (index) =>
-  index === null ? "hsl(var(--branch-root-fill))" : `hsl(var(--branch-${index}-fill))`;
-const branchTint = (index, alpha) => `hsl(var(${branchVar(index)}) / ${alpha})`;
+
+const SHAPES = {
+  root: "rounded-card border-2 border-black bg-primary shadow-hs-lg",
+  branch: "rounded-card border-2 border-border-strong bg-surface-raised shadow-hs-md",
+  leaf: "rounded-control border border-foreground/25 bg-surface",
+};
+
+const SKETCH_FILL = {
+  root: "hsl(var(--primary))",
+  branch: "hsl(var(--surface-raised))",
+  leaf: "hsl(var(--surface))",
+};
+
+const CHIPS = {
+  root: "border-primary-foreground/40 text-primary-foreground",
+  branch: "border-border bg-surface-sunk text-foreground/80",
+  leaf: "border-border bg-surface-sunk/70 text-muted-foreground",
+};
+
+function SketchShape({ tier, width, height, id }) {
+  const outlines = useMemo(
+    () => roughRect(width, height, tier === "leaf" ? 9 : 14, id, tier === "leaf" ? 1.1 : 1.6),
+    [tier, width, height, id]
+  );
+  const ink = "hsl(var(--border-strong))";
+  const shadow = tier === "root" ? 6 : tier === "branch" ? 3 : 0;
+
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 overflow-visible"
+      width={width}
+      height={height}
+      aria-hidden="true"
+    >
+      {shadow > 0 && (
+        <path d={outlines[0]} transform={`translate(${shadow} ${shadow})`} fill="#000" />
+      )}
+      <path d={outlines[0]} fill={SKETCH_FILL[tier]} stroke="none" />
+      {tier === "leaf" ? (
+        <path
+          d={outlines[0]}
+          fill="none"
+          stroke="hsl(var(--foreground))"
+          strokeOpacity={0.35}
+          strokeWidth={1.1}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : (
+        <>
+          <path
+            d={outlines[0]}
+            fill="none"
+            stroke={ink}
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d={outlines[1]}
+            fill="none"
+            stroke={ink}
+            strokeWidth={1.1}
+            strokeOpacity={0.45}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      )}
+    </svg>
+  );
+}
 
 const MindMapNode = memo(function MindMapNode({ id, data }) {
   const {
@@ -83,22 +179,22 @@ const MindMapNode = memo(function MindMapNode({ id, data }) {
     sketch,
     dimmed,
     onToggle,
+    reveal = null,
   } = data;
 
-  const line = branchLine(branch);
-  const fill = branchFill(branch);
+  const reduced = useReducedMotion();
+  const tier = depth === 0 ? "root" : depth === 1 ? "branch" : "leaf";
   const hasChildren = childCount > 0;
-
-  const outlines = useMemo(
-    () => (sketch ? roughRect(width, height, depth === 0 ? 18 : 12, id) : null),
-    [sketch, width, height, depth, id]
-  );
+  const animateIn = reveal !== null && !reduced;
+  const Chevron = collapsed ? (side === "left" ? ChevronLeft : ChevronRight) : ChevronDown;
+  const branchNumber = depth === 1 ? Number(id.split("-")[1]) + 1 : null;
 
   return (
     <div
       style={{ width, height }}
       className={cn(
-        "group relative transition-opacity duration-200",
+        "group relative rounded-card transition-opacity duration-200",
+        hasChildren && "cursor-pointer",
         dimmed && "opacity-25"
       )}
       onClick={hasChildren ? onToggle : undefined}
@@ -115,107 +211,156 @@ const MindMapNode = memo(function MindMapNode({ id, data }) {
       <Handle
         type="target"
         position={side === "left" ? Position.Right : Position.Left}
-        style={{ opacity: 0, width: 1, height: 1, border: "none", minWidth: 0, minHeight: 0 }}
+        style={{
+          opacity: 0,
+          width: 1,
+          height: 1,
+          border: "none",
+          minWidth: 0,
+          minHeight: 0,
+        }}
         isConnectable={false}
       />
       <Handle
         type="source"
         position={side === "left" ? Position.Left : Position.Right}
-        style={{ opacity: 0, width: 1, height: 1, border: "none", minWidth: 0, minHeight: 0 }}
+        style={{
+          opacity: 0,
+          width: 1,
+          height: 1,
+          border: "none",
+          minWidth: 0,
+          minHeight: 0,
+        }}
         isConnectable={false}
       />
 
-      {sketch ? (
-        <svg
-          className="pointer-events-none absolute inset-0 overflow-visible"
-          width={width}
-          height={height}
-          aria-hidden="true"
-        >
-          <path d={outlines[0]} fill={fill} stroke="none" />
-          <path
-            d={outlines[0]}
-            fill="none"
-            stroke={line}
-            strokeWidth={depth === 0 ? 2.6 : 2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d={outlines[1]}
-            fill="none"
-            stroke={line}
-            strokeWidth={depth === 0 ? 1.6 : 1.2}
-            strokeOpacity={0.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ) : (
-        <div
-          className="absolute inset-0 rounded-lg border-2"
-          style={{ background: fill, borderColor: line }}
-        />
-      )}
-
-      <div
-        className={cn(
-          "relative flex h-full flex-col px-4 py-3",
-          sketch && "font-sketch"
-        )}
+      <motion.div
+        className="absolute inset-0"
+        initial={animateIn ? { opacity: 0, scale: 0.55, y: 10 } : false}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={
+          animateIn
+            ? {
+                ...springPop,
+                delay: reveal,
+                opacity: { duration: 0.18, delay: reveal },
+              }
+            : { duration: 0 }
+        }
       >
-        <div className="flex items-start gap-1.5">
-          {hasChildren && (
-            <span className="mt-0.5 shrink-0" style={{ color: line }}>
-              {collapsed ? (
-                <ChevronRight className="size-4" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="size-4" aria-hidden="true" />
-              )}
-            </span>
-          )}
-          <h3
+        {sketch ? (
+          <SketchShape tier={tier} width={width} height={height} id={id} />
+        ) : (
+          <div
             className={cn(
-              "min-w-0 flex-1 leading-tight",
-              depth === 0 ? "text-lg font-bold" : depth === 1 ? "text-base font-bold" : "text-sm font-bold"
+              "absolute inset-0 transition-transform duration-150",
+              SHAPES[tier],
+              hasChildren &&
+                tier !== "leaf" &&
+                "group-hover:-translate-x-px group-hover:-translate-y-px"
             )}
-            style={{ color: line }}
-          >
-            {label}
-          </h3>
+          />
+        )}
+
+        <div className="relative flex h-full flex-col px-4 py-[13px]">
+          {tier !== "leaf" && (
+            <div
+              className={cn(
+                "mb-1.5 flex h-4 items-center gap-1.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-[0.1em]",
+                tier === "root" ? "text-primary-foreground/80" : "text-muted-foreground"
+              )}
+            >
+              {tier === "root" ? (
+                <span aria-hidden="true">◎</span>
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="size-2.5 shrink-0 rounded-[3px] border-[1.5px] border-black"
+                  style={{ background: branchLine(branch) }}
+                />
+              )}
+              <span>
+                {tier === "root" ? "Core idea" : `Branch ${String(branchNumber).padStart(2, "0")}`}
+              </span>
+              {hasChildren && (
+                <span className="ml-auto tabular">
+                  {childCount} {childCount === 1 ? "idea" : "ideas"}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-start gap-1.5">
+            <h3
+              className={cn(
+                "min-w-0 flex-1",
+                tier === "root" &&
+                  "font-display text-[22px] font-semibold leading-[25px] tracking-[-0.015em] text-primary-foreground",
+                tier === "branch" &&
+                  "font-display text-[17px] font-semibold leading-[21px] tracking-[-0.01em] text-foreground",
+                tier === "leaf" && "text-[13.5px] font-semibold leading-[18px] text-foreground"
+              )}
+            >
+              {label}
+            </h3>
+            {hasChildren && (
+              <span
+                className={cn(
+                  "mt-0.5 flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border-[1.5px] transition-colors",
+                  tier === "root"
+                    ? "border-primary-foreground/60 text-primary-foreground"
+                    : "border-border-strong text-foreground group-hover:bg-citron group-hover:text-citron-foreground"
+                )}
+                aria-hidden="true"
+              >
+                <Chevron className="size-3" strokeWidth={2.5} />
+              </span>
+            )}
+          </div>
+
+          {description && (
+            <p
+              className={cn(
+                "mt-1.5",
+                tier === "root" && "text-[13px] leading-[18px] text-primary-foreground/85",
+                tier === "branch" && "text-[12.5px] leading-[17px] text-foreground/75",
+                tier === "leaf" && "text-[12px] leading-[17px] text-muted-foreground"
+              )}
+            >
+              {description}
+            </p>
+          )}
+
+          {bulletPoints.length > 0 && (
+            <ul className="mt-auto flex flex-wrap gap-1 pt-2.5">
+              {bulletPoints.map((point) => (
+                <li
+                  key={point}
+                  className={cn(
+                    "max-w-full truncate whitespace-nowrap rounded-[4px] border px-1.5 font-mono text-[11px] leading-4",
+                    CHIPS[tier]
+                  )}
+                >
+                  {point}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        {description && (
-          <p
+        {hasChildren && collapsed && (
+          <span
+            aria-hidden="true"
             className={cn(
-              "mt-1.5 leading-snug text-foreground/85",
-              sketch ? "text-sm" : "text-xs"
+              "absolute top-1/2 flex h-6 -translate-y-1/2 items-center rounded-full border-2 border-black bg-citron px-1.5 font-mono text-[10px] font-semibold text-citron-foreground shadow-hs-sm",
+              side === "left" ? "-left-4" : "-right-4"
             )}
           >
-            {description}
-          </p>
+            +{childCount}
+          </span>
         )}
-
-        {bulletPoints.length > 0 && (
-          <ul className="mt-auto flex flex-wrap gap-1 pt-2">
-            {bulletPoints.map((point) => (
-              <li
-                key={point}
-                className="rounded px-1.5 py-0.5 text-xs leading-tight"
-                style={{ background: branchTint(branch, 0.15), color: line }}
-              >
-                {point}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {hasChildren && collapsed && (
-          <p className="mt-auto pt-1.5 text-xs" style={{ color: line, opacity: 0.8 }}>
-            +{childCount} more
-          </p>
-        )}
-      </div>
+      </motion.div>
     </div>
   );
 });
@@ -380,15 +525,40 @@ export function buildRadialFlow(tree, collapsed, toggle, { sketch, focusBranch }
   return { nodes, edges };
 }
 
-function ViewerToolbar({ title, sketch, onToggleSketch, onExport, fullscreen, onToggleFullscreen }) {
+function countNodes(node) {
+  if (!node?.title) return 0;
+  return 1 + (node.children ?? []).reduce((sum, child) => sum + countNodes(child), 0);
+}
+
+function withReveal(nodes, edges) {
+  const perDepth = new Map();
+  const delays = new Map();
+  const revealedNodes = nodes.map((node) => {
+    const depth = node.data.depth;
+    const position = perDepth.get(depth) ?? 0;
+    perDepth.set(depth, position + 1);
+    const delay = Math.min(0.08 + depth * 0.3 + position * 0.045, 2);
+    delays.set(node.id, delay);
+    return { ...node, data: { ...node.data, reveal: delay } };
+  });
+  const revealedEdges = edges.map((edge) => ({
+    ...edge,
+    data: {
+      ...edge.data,
+      reveal: Math.max(0, (delays.get(edge.target) ?? 0) - 0.22),
+    },
+  }));
+  return { nodes: revealedNodes, edges: revealedEdges };
+}
+
+const toolButton = "bg-surface-raised max-sm:size-11";
+
+function ViewerToolbar({ sketch, onToggleSketch, onExport, fullscreen, onToggleFullscreen }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { fitView } = useReactFlow();
 
   return (
     <Panel position="top-right" className="flex items-center gap-1.5">
-      <span className="hidden max-w-[200px] truncate rounded-md border border-border bg-surface/90 px-2.5 py-1.5 text-xs font-medium text-foreground backdrop-blur sm:block">
-        {title}
-      </span>
       <Button
         variant={sketch ? "default" : "outline"}
         size="icon-sm"
@@ -396,7 +566,7 @@ function ViewerToolbar({ title, sketch, onToggleSketch, onExport, fullscreen, on
         aria-pressed={sketch}
         aria-label={sketch ? "Switch to clean lines" : "Switch to hand-drawn"}
         title={sketch ? "Hand-drawn (on)" : "Hand-drawn (off)"}
-        className={sketch ? "" : "bg-surface"}
+        className={cn("max-sm:size-11", !sketch && "bg-surface-raised")}
       >
         <PenLine />
       </Button>
@@ -406,7 +576,7 @@ function ViewerToolbar({ title, sketch, onToggleSketch, onExport, fullscreen, on
         onClick={() => fitView({ padding: 0.2, duration: 400 })}
         aria-label="Fit to view"
         title="Fit to view"
-        className="bg-surface"
+        className={toolButton}
       >
         <Scan />
       </Button>
@@ -416,31 +586,32 @@ function ViewerToolbar({ title, sketch, onToggleSketch, onExport, fullscreen, on
         onClick={onToggleFullscreen}
         aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
         title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-        className="bg-surface"
+        className={toolButton}
       >
         {fullscreen ? <Minimize2 /> : <Maximize2 />}
       </Button>
 
       <div className="relative">
         <Button
-          variant="outline"
+          variant="secondary"
           size="icon-sm"
           onClick={() => setMenuOpen((value) => !value)}
           aria-label="Export"
           aria-expanded={menuOpen}
-          className="bg-surface"
+          className="max-sm:size-11"
         >
           <Download />
         </Button>
         <AnimatePresence>
           {menuOpen && (
             <motion.ul
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
+              initial={{ opacity: 0, y: -6, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4, scale: 0.98 }}
               transition={{ duration: 0.14 }}
-              className="absolute right-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-md border border-border bg-popover shadow-md"
+              className="absolute right-0 top-full z-50 mt-2 w-48 origin-top-right overflow-hidden rounded-control border-2 border-border-strong bg-surface-raised p-1 shadow-hs"
             >
+              <li className="eyebrow px-2.5 pb-1 pt-1.5">Export as</li>
               {[
                 { icon: FileImage, label: "PNG image", format: "png" },
                 { icon: FileText, label: "PDF", format: "pdf" },
@@ -453,10 +624,13 @@ function ViewerToolbar({ title, sketch, onToggleSketch, onExport, fullscreen, on
                       onExport(item.format);
                       setMenuOpen(false);
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-popover-foreground transition-colors hover:bg-surface-sunk"
+                    className="flex min-h-11 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-citron hover:text-citron-foreground"
                   >
-                    <item.icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                    {item.label}
+                    <item.icon className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="flex-1">{item.label}</span>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.08em] opacity-60">
+                      .{item.format}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -468,9 +642,41 @@ function ViewerToolbar({ title, sketch, onToggleSketch, onExport, fullscreen, on
   );
 }
 
-const SKETCH_KEY = "sm_mindmap_sketch";
+function Frame({ className, children, frameRef }) {
+  return (
+    <div
+      ref={frameRef}
+      className={cn(
+        "mm-frame relative h-full overflow-hidden rounded-hero border-2 border-border-strong bg-canvas shadow-hs",
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
 
-export default function MindMapViewer({ data, loading, fullscreen, onToggleFullscreen }) {
+function solidBackground(element) {
+  let node = element;
+  while (node) {
+    const color = getComputedStyle(node).backgroundColor;
+    if (color && color !== "transparent" && !/rgba\(.*,\s*0\)$/.test(color)) return color;
+    node = node.parentElement;
+  }
+  return document.documentElement.classList.contains("dark") ? "#1C1714" : "#F2EBDD";
+}
+
+const SKETCH_KEY = "sm_mindmap_sketch";
+const REVEAL_WINDOW = 2600;
+
+export default function MindMapViewer({
+  data,
+  loading,
+  loadingSince,
+  loadingDetail,
+  fullscreen,
+  onToggleFullscreen,
+}) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [focusBranch, setFocusBranch] = useState(null);
   const [sketch, setSketch] = useState(() => {
@@ -482,13 +688,19 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
   });
   const [exportError, setExportError] = useState(null);
   const deferred = useDeferredValue(data);
+  const frameRef = useRef(null);
+  const revealRef = useRef({ id: null, at: 0 });
+
+  if (deferred?.id && revealRef.current.id !== deferred.id) {
+    revealRef.current = { id: deferred.id, at: Date.now() };
+  }
+  const revealing = Boolean(deferred?.id) && Date.now() - revealRef.current.at < REVEAL_WINDOW;
 
   const toggleSketch = useCallback(() => {
     setSketch((value) => {
       try {
         localStorage.setItem(SKETCH_KEY, value ? "0" : "1");
-      } catch {
-      }
+      } catch {}
       return !value;
     });
   }, []);
@@ -504,16 +716,32 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
 
   const { nodes, edges } = useMemo(() => {
     if (!deferred?.mindmap) return { nodes: [], edges: [] };
-    return buildRadialFlow(deferred.mindmap, collapsed, toggle, { sketch, focusBranch });
-  }, [deferred, collapsed, toggle, sketch, focusBranch]);
+    const flow = buildRadialFlow(deferred.mindmap, collapsed, toggle, {
+      sketch,
+      focusBranch,
+    });
+    const sized = flow.nodes.map((node) => ({
+      ...node,
+      width: node.data.width,
+      height: node.data.height,
+    }));
+    return revealing ? withReveal(sized, flow.edges) : { nodes: sized, edges: flow.edges };
+  }, [deferred, collapsed, toggle, sketch, focusBranch, revealing]);
 
   const branches = useMemo(
-    () => (deferred?.mindmap?.children ?? []).map((child, index) => ({
-      title: child.title,
-      index: index % BRANCH_COUNT,
-    })),
+    () =>
+      (deferred?.mindmap?.children ?? []).map((child, index) => ({
+        title: child.title,
+        index: index % BRANCH_COUNT,
+        number: index + 1,
+      })),
     [deferred]
   );
+
+  const focusedTitle =
+    focusBranch === null ? null : branches.find((branch) => branch.index === focusBranch)?.title;
+
+  const nodeTotal = useMemo(() => countNodes(deferred?.mindmap), [deferred]);
 
   const exportMapUnsafe = useCallback(
     async (format) => {
@@ -533,11 +761,14 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
         return;
       }
 
-      const element = document.querySelector(".react-flow__viewport");
+      const element =
+        frameRef.current?.querySelector(".react-flow__viewport") ??
+        document.querySelector(".react-flow__viewport");
       if (!element) return;
+      const surface = frameRef.current?.querySelector(".react-flow") ?? frameRef.current;
       const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(element, {
-        backgroundColor: getComputedStyle(document.body).backgroundColor,
+        backgroundColor: solidBackground(surface ?? document.body),
         pixelRatio: 2,
       });
 
@@ -573,7 +804,10 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
       try {
         await exportMapUnsafe(format);
       } catch {
-        setExportError({ format, message: "The export failed. Please try again." });
+        setExportError({
+          format,
+          message: "The export failed. Please try again.",
+        });
       }
     },
     [exportMapUnsafe]
@@ -581,37 +815,64 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg border border-border bg-surface">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
-          <div>
-            <p className="text-sm font-medium text-foreground">Building your mind map</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Reading the document and organising it into branches.
-            </p>
+      <Frame className="overflow-y-auto scrollbar-thin">
+        <GridPaper cell={24} />
+        <div className="relative flex min-h-full flex-col items-center justify-center gap-4 p-3 sm:p-8">
+          <div className="flex w-full max-w-2xl items-baseline justify-between gap-3">
+            <Eyebrow number={1}>Map in progress</Eyebrow>
+            <span className="hidden font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground sm:inline">
+              Stays here while it builds
+            </span>
           </div>
+          <ThinkingStage
+            mode="mindmap"
+            stageLabel="Generating mind map"
+            detail={loadingDetail || undefined}
+            startedAt={loadingSince ?? undefined}
+            className="w-full max-w-2xl"
+          />
         </div>
-      </div>
+      </Frame>
     );
   }
 
   if (!deferred) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg border border-border bg-surface">
-        <EmptyState
-          icon={Network}
-          title="No mind map open"
-          description="Choose a document and a scope on the left, then generate a map."
-          className="border-0"
-        />
-      </div>
+      <Frame className="overflow-y-auto scrollbar-thin">
+        <GridPaper cell={24} />
+        <div className="relative flex min-h-full flex-col items-center justify-center px-5 py-10 text-center sm:px-10">
+          <EmptyCanvasArt />
+          <Eyebrow className="mt-8 justify-center">No mind map open</Eyebrow>
+          <h2 className="display mt-3 text-[2.5rem] text-foreground sm:text-[3.25rem]">
+            Nothing <span className="display-italic text-primary">mapped</span> yet
+          </h2>
+          <p className="mt-3 max-w-[44ch] text-sm leading-relaxed text-muted-foreground">
+            Choose a document and a scope in the setup panel, then generate a map. Anything you have
+            made before lives in the saved maps archive.
+          </p>
+          <ol className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-2 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">
+            {["Pick sources", "Set scope", "Generate"].map((step, index) => (
+              <li key={step} className="flex items-center gap-2">
+                {index > 0 && (
+                  <span aria-hidden="true" className="hidden h-px w-5 bg-foreground/40 sm:block" />
+                )}
+                <span className="rounded-full border-2 border-border-strong bg-surface-raised px-2.5 py-1 shadow-hs-sm">
+                  <span className="text-primary">{String(index + 1).padStart(2, "0")}</span> {step}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </Frame>
     );
   }
 
   return (
-    <div className="h-full overflow-hidden rounded-lg border border-border bg-canvas">
+    <Frame frameRef={frameRef}>
       <ReactFlow
         key={`${deferred.id}-${sketch}`}
+        className="mm-flow"
+        style={{ background: "hsl(var(--canvas))" }}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -627,56 +888,111 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
         proOptions={{ hideAttribution: true }}
       >
         <Background
-          variant={BackgroundVariant.Dots}
-          color="hsl(var(--border-strong))"
-          gap={26}
-          size={1.4}
+          id="minor"
+          variant={BackgroundVariant.Lines}
+          color="hsl(var(--foreground) / 0.05)"
+          gap={24}
+          lineWidth={1}
         />
-        <Controls showInteractive={false} className="!border-border !bg-surface !shadow-sm" />
+        <Background
+          id="major"
+          variant={BackgroundVariant.Lines}
+          color="hsl(var(--foreground) / 0.09)"
+          gap={120}
+          lineWidth={1}
+        />
+        <Controls
+          position="bottom-right"
+          orientation="horizontal"
+          showInteractive={false}
+          showFitView={false}
+        />
         <MiniMap
           pannable
           zoomable
-          className="!border-border !bg-surface"
-          maskColor="hsl(var(--canvas) / 0.75)"
-          nodeColor={(node) => branchLine(node.data?.branch ?? null)}
+          position="bottom-right"
+          className="mm-minimap"
+          style={{ width: 168, height: 116 }}
+          bgColor="hsl(var(--surface-raised))"
+          maskColor="hsl(var(--foreground) / 0.08)"
+          maskStrokeColor="hsl(var(--primary))"
+          maskStrokeWidth={2}
+          nodeColor={(node) =>
+            node.data?.depth === 0 ? "hsl(var(--primary))" : branchLine(node.data?.branch ?? null)
+          }
+          nodeBorderRadius={4}
           nodeStrokeWidth={0}
         />
 
+        <Panel position="top-left" className="hidden max-w-[min(42%,22rem)] sm:block">
+          <div className="rounded-control border-2 border-border-strong bg-surface-raised px-3.5 py-2.5 shadow-hs-sm">
+            <p className="eyebrow">
+              <span className="text-primary">Fig. 01</span> / Mind map
+            </p>
+            <p className="mt-1 line-clamp-2 font-display text-lg font-semibold leading-[1.15] tracking-[-0.01em] text-foreground">
+              {deferred.title}
+            </p>
+            <p className="mt-1 truncate font-mono text-[10.5px] uppercase tracking-[0.06em] text-muted-foreground">
+              {[deferred.source, `${nodeTotal} nodes`].filter(Boolean).join(" · ")}
+            </p>
+          </div>
+        </Panel>
+
         {branches.length > 1 && (
-          <Panel position="bottom-left" className="max-w-[min(calc(100vw-2rem),22rem)]">
-            <div className="flex flex-wrap gap-1 rounded-md border border-border bg-surface/90 p-1.5 backdrop-blur">
-              {branches.map((branch) => (
-                <button
-                  key={branch.title}
-                  type="button"
-                  onMouseEnter={() => setFocusBranch(branch.index)}
-                  onMouseLeave={() => setFocusBranch(null)}
-                  onFocus={() => setFocusBranch(branch.index)}
-                  onBlur={() => setFocusBranch(null)}
-                  onClick={() =>
-                    setFocusBranch((current) =>
-                      current === branch.index ? null : branch.index
-                    )
-                  }
-                  className={cn(
-                    "flex max-w-[150px] items-center gap-1.5 rounded px-1.5 py-1 text-xs transition-opacity",
-                    focusBranch !== null && focusBranch !== branch.index && "opacity-40"
-                  )}
-                >
-                  <span
-                    className="size-2.5 shrink-0 rounded-full"
-                    style={{ background: branchLine(branch.index) }}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate text-foreground">{branch.title}</span>
-                </button>
-              ))}
+          <Panel position="bottom-left" className="max-w-[calc(100%-9.5rem)]">
+            <div className="rounded-control border-2 border-border-strong bg-surface-raised p-1.5 shadow-hs-sm">
+              <p className="eyebrow flex min-w-0 max-w-[15rem] items-center gap-1.5 px-1 pb-1 pt-0.5">
+                <span className="shrink-0">Branches</span>
+                {focusedTitle && (
+                  <>
+                    <span aria-hidden="true">/</span>
+                    <span className="truncate text-foreground">{focusedTitle}</span>
+                  </>
+                )}
+              </p>
+              <div className="flex max-w-[11rem] gap-1 overflow-x-auto pb-0.5 sm:max-w-none sm:flex-wrap sm:overflow-visible sm:pb-0">
+                {branches.map((branch) => (
+                  <button
+                    key={`${branch.number}-${branch.title}`}
+                    type="button"
+                    aria-label={`Highlight branch ${branch.number}: ${branch.title}`}
+                    title={branch.title}
+                    aria-pressed={focusBranch === branch.index}
+                    onMouseEnter={() => setFocusBranch(branch.index)}
+                    onMouseLeave={() => setFocusBranch(null)}
+                    onFocus={() => setFocusBranch(branch.index)}
+                    onBlur={() => setFocusBranch(null)}
+                    onClick={() =>
+                      setFocusBranch((current) => (current === branch.index ? null : branch.index))
+                    }
+                    className={cn(
+                      "flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border-[1.5px] px-1.5 transition-[opacity,background-color,border-color] [@media(pointer:coarse)]:h-11",
+                      focusBranch === branch.index
+                        ? "border-border-strong bg-citron text-citron-foreground"
+                        : "border-border bg-surface hover:border-border-strong",
+                      focusBranch !== null && focusBranch !== branch.index && "opacity-40"
+                    )}
+                  >
+                    <span
+                      className="size-2.5 shrink-0 rounded-[3px] border-[1.5px] border-black"
+                      style={{ background: branchLine(branch.index) }}
+                      aria-hidden="true"
+                    />
+                    <span className="font-mono text-[11px] font-semibold tabular">
+                      {String(branch.number).padStart(2, "0")}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           </Panel>
         )}
 
         {exportError && (
-          <Panel position="top-left" className="!mt-14 max-w-[min(calc(100vw-3.5rem),20rem)]">
+          <Panel
+            position="top-left"
+            className="!mt-16 max-w-[min(calc(100vw-3.5rem),20rem)] sm:!mt-28"
+          >
             <ErrorState
               title="Export failed"
               message={exportError.message}
@@ -686,7 +1002,6 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
         )}
 
         <ViewerToolbar
-          title={deferred.title}
           sketch={sketch}
           onToggleSketch={toggleSketch}
           onExport={exportMap}
@@ -694,6 +1009,6 @@ export default function MindMapViewer({ data, loading, fullscreen, onToggleFulls
           onToggleFullscreen={onToggleFullscreen}
         />
       </ReactFlow>
-    </div>
+    </Frame>
   );
 }

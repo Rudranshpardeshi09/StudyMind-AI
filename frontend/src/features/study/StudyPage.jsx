@@ -98,6 +98,7 @@ export default function StudyPage() {
             role: message.role,
             content: message.content,
             sources: message.sources ?? [],
+            createdAt: message.created_at ?? null,
           }))
         );
         setMarks(session.marks ?? 3);
@@ -118,7 +119,10 @@ export default function StudyPage() {
     async (question) => {
       lastQuestion.current = question;
       setDraft("");
-      setMessages((prev) => [...prev, { id: nextId(), role: "user", content: question }]);
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: "user", content: question, createdAt: Date.now() },
+      ]);
       setPendingStartedAt(Date.now());
       const run = ++runRef.current;
 
@@ -163,7 +167,15 @@ export default function StudyPage() {
       const { answer, sources, session_id: newSessionId } = outcome.result;
       setMessages((prev) => [
         ...prev,
-        { id: nextId(), role: "assistant", content: answer, sources: sources ?? [] },
+        {
+          id: nextId(),
+          role: "assistant",
+          content: answer,
+          sources: sources ?? [],
+          marks,
+          createdAt: Date.now(),
+          fresh: true,
+        },
       ]);
       if (newSessionId && newSessionId !== sessionId) patchParams({ session: newSessionId });
       loadSessions();
@@ -208,8 +220,6 @@ export default function StudyPage() {
             selectedIds.length === ready.length ? "" : ready.map((doc) => doc.id).join(","),
         })
       }
-      marks={marks}
-      onMarksChange={setMarks}
       syllabus={syllabus}
       onSyllabusChange={setSyllabus}
       sessions={sessions}
@@ -240,29 +250,32 @@ export default function StudyPage() {
 
   return (
     <div className="flex h-full">
-      <aside className="hidden w-[300px] shrink-0 overflow-y-auto border-r border-border bg-surface scrollbar-thin lg:block">
+      <aside
+        aria-label="Study setup"
+        className="hidden w-[300px] shrink-0 overflow-y-auto border-r-2 border-border-strong bg-surface scrollbar-thin xl:block"
+      >
         {config}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2 lg:hidden">
-          <Button variant="outline" size="sm" onClick={() => setConfigOpen(true)}>
+        <div className="flex items-center gap-3 border-b-2 border-border-strong bg-surface px-3 py-2 sm:px-6 xl:hidden">
+          <Button variant="outline" onClick={() => setConfigOpen(true)} className="shrink-0 px-3.5">
             <SlidersHorizontal aria-hidden="true" />
             Setup
           </Button>
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <Badge tone="neutral">{activeMarks?.label ?? "Short"}</Badge>
+          <div className="no-scrollbar flex min-w-0 items-center gap-1.5 overflow-x-auto">
+            <Badge tone="ink">{activeMarks ? `${activeMarks.value} marks` : "3 marks"}</Badge>
             <Badge tone="neutral">
               {selectedIds.length > 0
                 ? `${selectedIds.length} selected`
                 : `${ready.length} ${ready.length === 1 ? "doc" : "docs"}`}
             </Badge>
-            {syllabus && <Badge tone="accent">Syllabus</Badge>}
+            {syllabus && <Badge tone="citron">Syllabus</Badge>}
           </div>
         </div>
 
         {loadError && (
-          <div className="p-3">
+          <div className="mx-auto w-full max-w-[1040px] px-4 pt-4 sm:px-6 lg:px-10">
             <ErrorState message={loadError} onRetry={() => patchParams({ session: "" })} />
           </div>
         )}
@@ -272,6 +285,7 @@ export default function StudyPage() {
           stream={stream}
           pendingStartedAt={pendingStartedAt}
           canAsk={canAsk}
+          documentCount={selectedIds.length || ready.length}
           onSuggestion={send}
           onRetry={retry}
           onCancel={stream.cancel}
@@ -284,11 +298,14 @@ export default function StudyPage() {
           disabled={!canAsk}
           disabledReason="Add a document in the Library first"
           restoreValue={draft}
+          marks={marks}
+          marksOptions={MARKS_OPTIONS}
+          onMarksChange={setMarks}
         />
       </div>
 
       <Sheet open={configOpen} onOpenChange={setConfigOpen}>
-        <SheetContent side="bottom" title="Study setup" className="lg:hidden">
+        <SheetContent side="bottom" title="Study setup" className="xl:hidden">
           {config}
         </SheetContent>
       </Sheet>

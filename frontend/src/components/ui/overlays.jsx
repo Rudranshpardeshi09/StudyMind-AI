@@ -12,9 +12,26 @@ export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
 const overlayClasses =
-  "fixed inset-0 z-50 bg-foreground/40 backdrop-blur-[2px] " +
+  "fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px] " +
   "data-[state=open]:animate-in data-[state=closed]:animate-out " +
   "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0";
+
+const dialogSurface =
+  "fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 " +
+  "overflow-y-auto rounded-card border-2 border-border-strong bg-surface-raised p-6 shadow-hs-lg outline-none " +
+  "duration-200 ease-snap data-[state=open]:animate-in data-[state=closed]:animate-out " +
+  "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 " +
+  "data-[state=open]:zoom-in-90 data-[state=closed]:zoom-out-95 " +
+  "data-[state=open]:slide-in-from-bottom-2 data-[state=closed]:duration-100";
+
+const titleClasses =
+  "font-display text-2xl font-semibold leading-tight tracking-[-0.015em] text-foreground";
+
+const closeClasses =
+  "inline-flex size-9 shrink-0 items-center justify-center rounded-control border-2 border-transparent " +
+  "text-muted-foreground transition-[transform,box-shadow,border-color,color] [transition-duration:120ms] " +
+  "hover:-translate-x-px hover:-translate-y-px hover:border-border-strong hover:bg-surface hover:text-foreground hover:shadow-hs-sm " +
+  "active:translate-x-px active:translate-y-px active:shadow-none";
 
 export const DialogContent = React.forwardRef(
   ({ className, children, title, description, ...props }, ref) => (
@@ -23,30 +40,21 @@ export const DialogContent = React.forwardRef(
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 " +
-            "-translate-y-1/2 rounded-lg border border-border bg-surface p-5 shadow-md " +
-            "data-[state=open]:animate-in data-[state=closed]:animate-out " +
-            "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 " +
-            "data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
+          dialogSurface + " max-w-lg",
           className
         )}
         {...props}
       >
         {title && (
-          <DialogPrimitive.Title className="text-base font-semibold text-foreground">
-            {title}
-          </DialogPrimitive.Title>
+          <DialogPrimitive.Title className={cn(titleClasses, "pr-10")}>{title}</DialogPrimitive.Title>
         )}
         {description && (
-          <DialogPrimitive.Description className="mt-1.5 text-sm text-muted-foreground">
+          <DialogPrimitive.Description className="mt-2 text-sm text-muted-foreground">
             {description}
           </DialogPrimitive.Description>
         )}
         {children}
-        <DialogPrimitive.Close
-          className="absolute right-4 top-4 rounded-sm text-muted-foreground transition-colors hover:text-foreground"
-          aria-label="Close"
-        >
+        <DialogPrimitive.Close className={cn(closeClasses, "absolute right-3 top-3")} aria-label="Close">
           <X className="size-4" />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
@@ -58,7 +66,7 @@ DialogContent.displayName = "DialogContent";
 export function DialogFooter({ className, ...props }) {
   return (
     <div
-      className={cn("mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+      className={cn("mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end", className)}
       {...props}
     />
   );
@@ -70,13 +78,13 @@ export const SheetClose = DialogPrimitive.Close;
 
 const SIDE_CLASSES = {
   left:
-    "inset-y-0 left-0 h-full w-[85vw] max-w-sm border-r " +
+    "inset-y-0 left-0 h-full w-[85vw] max-w-sm border-r-2 shadow-hs-lg " +
     "data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left",
   right:
-    "inset-y-0 right-0 h-full w-[85vw] max-w-sm border-l " +
+    "inset-y-0 right-0 h-full w-[85vw] max-w-sm border-l-2 shadow-hs-sheet " +
     "data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right",
   bottom:
-    "inset-x-0 bottom-0 max-h-[85vh] rounded-t-lg border-t " +
+    "inset-x-0 bottom-0 max-h-[85vh] rounded-t-hero border-x-2 border-t-2 shadow-hs-up " +
     "data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom",
 };
 
@@ -87,20 +95,21 @@ export const SheetContent = React.forwardRef(
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed z-50 flex flex-col border-border bg-surface shadow-md " +
-            "data-[state=open]:animate-in data-[state=closed]:animate-out",
+          "fixed z-50 flex flex-col border-border-strong bg-surface-raised outline-none " +
+            "duration-300 ease-snap data-[state=open]:animate-in data-[state=closed]:animate-out " +
+            "data-[state=closed]:duration-150",
           SIDE_CLASSES[side],
           className
         )}
         {...props}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between gap-4 border-b-2 border-border-strong px-4 py-3">
           <div className="min-w-0">
-            <DialogPrimitive.Title className="text-sm font-semibold text-foreground">
+            <DialogPrimitive.Title className="font-display text-xl font-semibold leading-tight tracking-[-0.015em] text-foreground">
               {title}
             </DialogPrimitive.Title>
             {description ? (
-              <DialogPrimitive.Description className="mt-0.5 text-xs text-muted-foreground">
+              <DialogPrimitive.Description className="eyebrow mt-1">
                 {description}
               </DialogPrimitive.Description>
             ) : (
@@ -109,10 +118,7 @@ export const SheetContent = React.forwardRef(
               </DialogPrimitive.Description>
             )}
           </div>
-          <DialogPrimitive.Close
-            className="rounded-sm text-muted-foreground transition-colors hover:text-foreground"
-            aria-label="Close"
-          >
+          <DialogPrimitive.Close className={closeClasses} aria-label="Close">
             <X className="size-4" />
           </DialogPrimitive.Close>
         </div>
@@ -165,24 +171,23 @@ export function ConfirmDialog({
       <AlertDialogPrimitive.Portal>
         <AlertDialogPrimitive.Overlay className={overlayClasses} />
         <AlertDialogPrimitive.Content
-          className={
-            "fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 " +
-            "-translate-y-1/2 rounded-lg border border-border bg-surface p-5 shadow-md " +
-            "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
-          }
+          className={dialogSurface + " max-w-md"}
         >
-          <AlertDialogPrimitive.Title className="text-base font-semibold text-foreground">
+          <AlertDialogPrimitive.Title className={titleClasses}>
             {title}
           </AlertDialogPrimitive.Title>
-          <AlertDialogPrimitive.Description className="mt-1.5 text-sm text-muted-foreground">
+          <AlertDialogPrimitive.Description className="mt-2 text-sm text-muted-foreground">
             {description}
           </AlertDialogPrimitive.Description>
           {error && (
-            <p role="alert" className="mt-3 text-sm text-destructive">
+            <p
+              role="alert"
+              className="mt-3 rounded-control border-2 border-destructive bg-destructive-soft px-3 py-2 text-sm text-destructive"
+            >
               {error}
             </p>
           )}
-          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <AlertDialogPrimitive.Cancel asChild>
               <Button variant="outline" disabled={busy}>
                 {cancelLabel}

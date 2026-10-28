@@ -1,8 +1,15 @@
+import { useRef } from "react";
 import { Link } from "react-router-dom";
+import { motion } from "framer-motion";
 import { ArrowRight, BookOpen, FileUp, Network, Quote, Search } from "lucide-react";
 
+import { Marquee, Sticker } from "@/components/art";
 import { Button } from "@/components/ui/button";
-import { Card, PageHeader } from "@/components/ui/primitives";
+import { Eyebrow, PageHeader } from "@/components/ui/primitives";
+import { useAuth } from "@/features/auth/AuthContext";
+import { pageEnter, riseIn, useReducedMotionSafe } from "@/lib/motion";
+
+import TutorialSteps from "./TutorialSteps";
 
 const STEPS = [
   {
@@ -59,81 +66,114 @@ const FAQ = [
 ];
 
 export default function TutorialPage() {
+  const scrollRef = useRef(null);
+  const m = useReducedMotionSafe();
+  const { isAuthenticated } = useAuth();
+
   return (
-    <div className="h-full overflow-y-auto scrollbar-thin">
-      <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
-        <PageHeader
-          title="How StudyMind works"
-          description="Four steps from a PDF to answers you can verify."
-          actions={
-            <Button asChild>
-              <Link to="/library">
-                Upload material
-                <ArrowRight aria-hidden="true" />
-              </Link>
-            </Button>
-          }
-        />
+    <div ref={scrollRef} className="relative h-full overflow-y-auto overflow-x-hidden scrollbar-thin">
+      <div className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:px-6 sm:pt-10">
+        <motion.div variants={m.variants(pageEnter)} initial={m.initial} animate="show">
+          <motion.div variants={m.variants(riseIn)}>
+            <PageHeader
+              as={isAuthenticated ? "h2" : "h1"}
+              number={5}
+              eyebrow="Guide"
+              title="How StudyMind"
+              emphasis="works"
+              description="Four steps from a PDF to answers you can verify."
+              titleClassName="lg:text-[4rem]"
+              actions={
+                <Button asChild>
+                  <Link to="/library">
+                    Upload material
+                    <ArrowRight aria-hidden="true" />
+                  </Link>
+                </Button>
+              }
+              marginalia={
+                <div className="relative hairline-t pt-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
+                  <p className="eyebrow mb-1.5 text-foreground">Reading time</p>
+                  About two minutes. The stages and notes below describe what the app actually does.
+                  <Sticker tone="citron" rotate={-5} className="absolute -top-4 right-0">
+                    4 steps
+                  </Sticker>
+                </div>
+              }
+            />
+          </motion.div>
+        </motion.div>
+      </div>
 
-        <ol className="space-y-3">
-          {STEPS.map((step, index) => (
-            <li key={step.title}>
-              <Card className="flex gap-4 p-5">
-                <div className="flex shrink-0 flex-col items-center gap-2">
-                  <span className="tabular flex size-8 items-center justify-center rounded-md bg-primary text-sm font-semibold text-primary-foreground">
-                    {index + 1}
+      <Marquee
+        items={["Upload", "Ask", "Check the citations", "Map it out", "Receipts included"]}
+        speed={32}
+        tilt={-1.5}
+      />
+
+      <div className="mx-auto max-w-6xl space-y-20 px-4 pb-16 pt-10 sm:px-6 sm:pt-14">
+        <TutorialSteps steps={STEPS} scrollRef={scrollRef} />
+
+        <motion.section
+          aria-labelledby="faq-heading"
+          variants={m.variants(pageEnter)}
+          initial={m.initial}
+          whileInView="show"
+          viewport={{ once: true, amount: 0.15 }}
+          className="grid grid-cols-1 gap-8 lg:grid-cols-12"
+        >
+          <motion.div variants={m.variants(riseIn)} className="lg:col-span-4">
+            <Eyebrow>Q &amp; A</Eyebrow>
+            <h2 id="faq-heading" className="display mt-3 text-display-sm text-foreground">
+              Common questions
+            </h2>
+            <p className="mt-3 max-w-[34ch] text-sm leading-relaxed text-muted-foreground">
+              Straight answers about privacy, failed uploads and what happens while you wait.
+            </p>
+          </motion.div>
+          <dl className="border-t-2 border-border-strong lg:col-span-8">
+            {FAQ.map((item, index) => (
+              <motion.div
+                key={item.q}
+                variants={m.variants(riseIn)}
+                className="grid grid-cols-1 gap-2 border-b border-border py-6 sm:grid-cols-12 sm:gap-6"
+              >
+                <dt className="sm:col-span-5">
+                  <span className="block font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-primary">
+                    Q.{String(index + 1).padStart(2, "0")}
                   </span>
-                  {index < STEPS.length - 1 && (
-                    <span className="w-px flex-1 bg-border" aria-hidden="true" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <step.icon className="size-4 text-muted-foreground" aria-hidden="true" />
-                    {step.title}
-                  </h2>
-                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                    {step.body}
-                  </p>
-                  <p className="mt-2 rounded-md bg-surface-sunk px-3 py-2 text-xs text-muted-foreground">
-                    {step.detail}
-                  </p>
-                </div>
-              </Card>
-            </li>
-          ))}
-        </ol>
-
-        <Card>
-          <div className="border-b border-border px-5 py-4">
-            <h2 className="text-sm font-semibold text-foreground">Common questions</h2>
-          </div>
-          <dl className="divide-y divide-border">
-            {FAQ.map((item) => (
-              <div key={item.q} className="px-5 py-4">
-                <dt className="text-sm font-medium text-foreground">{item.q}</dt>
-                <dd className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                  <span className="mt-1.5 block font-display text-xl font-semibold leading-snug tracking-[-0.01em] text-foreground">
+                    {item.q}
+                  </span>
+                </dt>
+                <dd className="text-[15px] leading-relaxed text-muted-foreground sm:col-span-7 sm:pt-6">
                   {item.a}
                 </dd>
-              </div>
+              </motion.div>
             ))}
           </dl>
-        </Card>
+        </motion.section>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Button asChild variant="outline" className="h-auto justify-start py-3">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-12">
+          <Button asChild variant="secondary" size="lg" className="h-auto justify-between py-4 sm:col-span-7">
             <Link to="/study">
-              <BookOpen aria-hidden="true" />
-              Start studying
+              <span className="flex items-center gap-2.5">
+                <BookOpen aria-hidden="true" />
+                Start studying
+              </span>
+              <ArrowRight aria-hidden="true" />
             </Link>
           </Button>
-          <Button asChild variant="outline" className="h-auto justify-start py-3">
+          <Button asChild variant="outline" size="lg" className="h-auto justify-between py-4 sm:col-span-5 sm:mt-6">
             <Link to="/mind-maps">
-              <Network aria-hidden="true" />
-              Build a mind map
+              <span className="flex items-center gap-2.5">
+                <Network aria-hidden="true" />
+                Build a mind map
+              </span>
+              <ArrowRight aria-hidden="true" />
             </Link>
           </Button>
-        </div>
+        </section>
       </div>
     </div>
   );

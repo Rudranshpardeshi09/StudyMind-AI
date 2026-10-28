@@ -1,7 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { Monitor, Moon, Sun } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { springPress } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 
 const ThemeContext = createContext(null);
 const STORAGE_KEY = "sm_theme";
@@ -63,23 +65,54 @@ export function useTheme() {
 const ICONS = { light: Sun, dark: Moon, system: Monitor };
 const LABELS = { light: "Light", dark: "Dark", system: "System" };
 
-export function ThemeToggle() {
+export function ThemeToggle({ className, showLabels = false, size = "sm" }) {
   const { theme, setTheme } = useTheme();
-  const Icon = ICONS[theme] ?? Monitor;
-
-  const cycle = useCallback(() => {
-    setTheme(ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length]);
-  }, [theme, setTheme]);
+  const reduced = useReducedMotion();
+  const pillId = useId();
+  const segment =
+    size === "sm"
+      ? "h-8 min-w-8 max-md:h-11 max-md:min-w-11 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:min-w-11"
+      : "h-11 min-w-11";
 
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      onClick={cycle}
-      aria-label={`Theme: ${LABELS[theme]}. Click to change.`}
-      title={`Theme: ${LABELS[theme]}`}
+    <div
+      role="group"
+      aria-label="Colour theme"
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded-control border-2 border-control bg-surface p-0.5 shadow-hs-sm",
+        className
+      )}
     >
-      <Icon />
-    </Button>
+      {ORDER.map((option) => {
+        const Icon = ICONS[option];
+        const selected = theme === option;
+        return (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={selected}
+            aria-label={`${LABELS[option]} theme`}
+            title={`${LABELS[option]} theme`}
+            onClick={() => setTheme(option)}
+            className={cn(
+              "relative inline-flex items-center justify-center gap-1.5 rounded-[6px] px-2 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] transition-colors duration-150",
+              segment,
+              selected ? "text-bone dark:text-ink" : "text-muted-foreground hover:bg-surface-sunk hover:text-foreground"
+            )}
+          >
+            {selected && (
+              <motion.span
+                layoutId={reduced ? undefined : `theme-pill-${pillId}`}
+                transition={springPress}
+                className="absolute inset-0 rounded-[6px] bg-ink dark:bg-citron"
+                aria-hidden="true"
+              />
+            )}
+            <Icon className="relative size-4" aria-hidden="true" />
+            {showLabels && <span className="relative">{LABELS[option]}</span>}
+          </button>
+        );
+      })}
+    </div>
   );
 }

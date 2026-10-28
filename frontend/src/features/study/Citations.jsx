@@ -1,22 +1,28 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronDown, FileText } from "lucide-react";
 
+import { EASE_DRAW } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-export default function Citations({ sources = [] }) {
+export default function Citations({ sources = [], className }) {
   const [openIndex, setOpenIndex] = useState(null);
   const reduced = useReducedMotion();
 
   if (!sources.length) return null;
 
-  return (
-    <div className="mt-2.5">
-      <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-        {sources.length} {sources.length === 1 ? "source" : "sources"}
-      </p>
+  const open = openIndex !== null ? sources[openIndex] : null;
 
-      <div className="flex flex-wrap gap-1.5">
+  return (
+    <div className={cn("min-w-0", className)}>
+      <div className="mb-2.5 flex items-center gap-2">
+        <span className="eyebrow text-foreground">Sources</span>
+        <span aria-hidden="true" className="h-px flex-1 bg-border" />
+        <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground tabular">
+          {sources.length} {sources.length === 1 ? "source" : "sources"}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2 min-[1400px]:flex-col min-[1400px]:flex-nowrap">
         {sources.map((source, index) => {
           const isOpen = openIndex === index;
           const name = source.document_name || "Unknown document";
@@ -26,38 +32,61 @@ export default function Citations({ sources = [] }) {
               type="button"
               onClick={() => setOpenIndex(isOpen ? null : index)}
               aria-expanded={isOpen}
+              title={`${name} · page ${source.page}`}
               className={cn(
-                "inline-flex max-w-full items-center gap-1.5 rounded-sm border px-2 py-1 " +
-                  "text-xs transition-colors",
+                "group/cite inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-control border-2 border-border-strong px-2.5 text-left",
+                "font-mono text-[11.5px] leading-tight shadow-hs-sm",
+                "transition-[transform,box-shadow,background-color] [transition-duration:120ms] ease-out",
+                "hover:-translate-x-px hover:-translate-y-px hover:shadow-hs",
+                "active:translate-x-0.5 active:translate-y-0.5 active:shadow-hs-press",
+                "motion-reduce:transform-none sm:min-h-9 min-[1400px]:w-full",
                 isOpen
-                  ? "border-primary/40 bg-primary-soft text-primary"
-                  : "border-border bg-surface-sunk text-muted-foreground hover:border-border-strong hover:text-foreground"
+                  ? "bg-ink text-bone dark:bg-bone dark:text-ink"
+                  : "bg-surface-raised text-foreground"
               )}
             >
-              <FileText className="size-3 shrink-0" aria-hidden="true" />
-              <span className="truncate">{name}</span>
-              <span className="shrink-0 opacity-70">p.{source.page}</span>
-              <ChevronDown
-                className={cn("size-3 shrink-0 transition-transform", isOpen && "rotate-180")}
+              <span
+                className={cn(
+                  "shrink-0 font-semibold tabular",
+                  isOpen ? "text-citron dark:text-primary" : "text-primary"
+                )}
                 aria-hidden="true"
-              />
+              >
+                [{index + 1}]
+              </span>
+              <span className="min-w-0 truncate">{name}</span>
+              <span aria-hidden="true" className="shrink-0 opacity-50">
+                ·
+              </span>
+              <span className="shrink-0 tabular opacity-80">p.{source.page}</span>
             </button>
           );
         })}
       </div>
 
-      <AnimatePresence initial={false}>
-        {openIndex !== null && sources[openIndex] && (
+      <AnimatePresence initial={false} mode="wait">
+        {open && (
           <motion.blockquote
-            initial={reduced ? false : { opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={reduced ? undefined : { opacity: 0, height: 0 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="overflow-hidden"
+            key={openIndex}
+            initial={reduced ? false : { opacity: 0, clipPath: "inset(0% 0% 100% 0%)" }}
+            animate={{ opacity: 1, clipPath: "inset(0% 0% 0% 0%)" }}
+            exit={reduced ? undefined : { opacity: 0, transition: { duration: 0.12 } }}
+            transition={{ duration: 0.38, ease: EASE_DRAW }}
+            className="relative mt-4 border-l-[3px] border-primary pl-4"
           >
-            <p className="mt-2 border-l-2 border-primary/40 bg-surface-sunk px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-              {sources[openIndex].text}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-3 left-3 font-display text-5xl leading-none text-primary/25"
+            >
+              &ldquo;
+            </span>
+            <p className="relative font-display text-[15px] italic leading-relaxed text-foreground/90 [font-variation-settings:'SOFT'_100,'WONK'_0]">
+              {open.text}
             </p>
+            <footer className="mt-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground [overflow-wrap:anywhere]">
+              <span className="text-primary">[{openIndex + 1}]</span>{" "}
+              {open.document_name || "Unknown document"} — page {open.page}
+            </footer>
           </motion.blockquote>
         )}
       </AnimatePresence>

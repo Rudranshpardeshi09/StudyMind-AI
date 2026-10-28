@@ -1,14 +1,14 @@
 import { Component, Suspense, lazy, useEffect } from "react";
-import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { ThemeProvider, ThemeToggle } from "@/components/ThemeToggle";
+import { ThemeProvider } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/primitives";
 import { AuthProvider, useAuth } from "@/features/auth/AuthContext";
 import { DocumentsProvider } from "@/features/library/DocumentsContext";
 import { encodeNext, ProtectedRoute, PublicOnlyRoute } from "@/features/auth/ProtectedRoute";
 import AppShell from "@/layouts/AppShell";
+import PublicHeader from "@/features/marketing/PublicHeader";
 
 const LandingPage = lazy(() => import("@/features/marketing/LandingPage"));
 const LoginPage = lazy(() => import("@/features/auth/LoginPage"));
@@ -69,23 +69,8 @@ function TutorialLayout() {
   if (isAuthenticated) return <AppShell />;
 
   return (
-    <div className="flex h-screen flex-col bg-canvas">
-      <header className="shrink-0 border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">
-          <Link to="/" className="flex items-center gap-2.5 text-foreground">
-            <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Sparkles className="size-4" aria-hidden="true" />
-            </span>
-            <span className="text-sm font-semibold tracking-tight">StudyMind</span>
-          </Link>
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button size="sm" asChild>
-              <Link to="/login">Sign in</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
+    <div className="flex h-dvh flex-col bg-canvas">
+      <PublicHeader showGuideLink={false} />
       <main className="min-h-0 flex-1">
         <Suspense fallback={<RouteFallback />}>
           <Outlet />

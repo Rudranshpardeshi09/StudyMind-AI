@@ -1,12 +1,15 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
-import { ArrowRight, BookOpen, Lock, Mail, Network, Quote, Sparkles } from "lucide-react";
+import { ArrowRight, BookOpen, Lock, Mail, Network } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/primitives";
 import { toMessage } from "@/services/http";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { BrandLink } from "@/features/marketing/PublicHeader";
+import AuthArt, { RotatingLine } from "./AuthArt";
 import { useAuth } from "./AuthContext";
 import { safeNext } from "./ProtectedRoute";
 
@@ -21,6 +24,16 @@ function passwordProblem(password) {
   }
   return null;
 }
+
+const INPUT =
+  "h-12 w-full rounded-control border-2 border-transparent bg-surface-sunk px-3.5 text-[15px] text-foreground " +
+  "shadow-[inset_0_2px_0_0_hsl(var(--foreground)/0.06)] placeholder:text-muted-foreground " +
+  "transition-[border-color,background-color,box-shadow] duration-150 hover:border-border " +
+  "focus:border-border-strong focus:bg-surface-raised focus:shadow-hs-sm " +
+  "focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ring " +
+  "disabled:opacity-60";
+
+const LABEL = "mb-1.5 block font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-foreground";
 
 const HIGHLIGHTS = [
   { icon: BookOpen, text: "Answers cite the page they came from" },
@@ -101,197 +114,215 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="grid min-h-screen bg-canvas lg:grid-cols-[1.05fr_1fr]">
-      <aside className="relative hidden flex-col justify-between bg-surface p-10 lg:flex">
-        <Link to="/" className="flex items-center gap-2.5 text-foreground">
-          <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Sparkles className="size-4" aria-hidden="true" />
+    <div className="relative min-h-screen overflow-x-clip bg-canvas text-foreground lg:grid lg:grid-cols-12">
+      <aside className="relative hidden flex-col gap-12 px-10 py-8 lg:col-span-7 lg:flex xl:px-14">
+        <div className="flex items-center justify-between gap-4 pr-12">
+          <BrandLink />
+          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            No. 02 — Sign-in desk
           </span>
-          <span className="text-sm font-semibold tracking-tight">StudyMind</span>
-        </Link>
+        </div>
 
-        <div className="max-w-md">
-          <Quote className="size-6 text-primary" aria-hidden="true" />
-          <p className="mt-4 text-xl font-medium leading-relaxed text-foreground">
-            Ask your textbook a question and get an answer that shows its working — the
-            document, the page, the passage.
-          </p>
-          <ul className="mt-8 space-y-3">
+        <div className="grid grid-cols-7 items-end gap-x-8 gap-y-8 pr-16 xl:pr-24">
+          <div className="col-span-7">
+            <p className="eyebrow">
+              <span className="text-primary">02 /</span> Retrieval-augmented answers
+            </p>
+            <RotatingLine size="lg" className="mt-4 min-h-[9.5rem] xl:min-h-[11.5rem]" />
+          </div>
+          <AuthArt className="col-span-4 ml-3" />
+          <ul className="col-span-3 space-y-3 self-end">
             {HIGHLIGHTS.map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-3 text-sm text-muted-foreground">
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface-sunk">
-                  <Icon className="size-3.5" aria-hidden="true" />
-                </span>
+              <li key={text} className="flex items-start gap-3 hairline-t pt-3 text-sm text-foreground/85">
+                <Icon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
                 {text}
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="text-xs text-muted-foreground">
+        <p className="mt-auto font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
           Retrieval-augmented answers from your own material.
         </p>
       </aside>
 
-      <main className="flex items-center justify-center px-5 py-10 sm:px-8">
-        <div className="w-full max-w-sm">
-          <Link to="/" className="mb-8 flex items-center gap-2.5 text-foreground lg:hidden">
-            <span className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Sparkles className="size-4" aria-hidden="true" />
-            </span>
-            <span className="text-sm font-semibold tracking-tight">StudyMind</span>
-          </Link>
+      <main className="relative flex min-h-screen flex-col px-4 pb-10 pt-3 sm:px-8 lg:col-span-5 lg:justify-center lg:border-l-2 lg:border-border-strong lg:bg-surface-sunk lg:px-0 lg:py-10">
+        <div className="flex items-center justify-between gap-3 lg:absolute lg:right-6 lg:top-6">
+          <BrandLink className="lg:hidden" />
+          <ThemeToggle />
+        </div>
 
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            {copy.title}
-          </h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            {mode === "login"
-              ? "Sign in to reach your documents and saved chats."
-              : "Start indexing your study material in a couple of minutes."}
-          </p>
+        <div className="mt-6 lg:hidden">
+          <RotatingLine className="min-h-[6.5rem]" />
+        </div>
 
-          <div
-            role="tablist"
-            aria-label="Authentication mode"
-            className="mt-6 grid grid-cols-2 rounded-md bg-surface-sunk p-1"
-          >
-            {["login", "signup"].map((value) => (
-              <button
-                key={value}
-                role="tab"
-                type="button"
-                aria-selected={mode === value}
-                onClick={() => {
-                  setMode(value);
-                  setError(null);
-                }}
-                className={cn(
-                  "rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
-                  mode === value
-                    ? "bg-surface text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {value === "login" ? "Sign in" : "Sign up"}
-              </button>
-            ))}
-          </div>
+        <div className="relative mx-auto mt-8 w-full max-w-[26rem] lg:-ml-16 lg:mt-0 xl:-ml-20">
+          <div className="relative rounded-hero border-2 border-border-strong bg-surface-raised p-6 shadow-hs-lg sm:p-8">
+            <p className="eyebrow">
+              <span className="text-primary">{mode === "login" ? "01" : "02"} /</span>{" "}
+              {mode === "login" ? "Returning reader" : "New reader"}
+            </p>
+            <h1 className="display mt-3 text-[2.25rem] text-foreground sm:text-[2.6rem]">
+              {copy.title}
+            </h1>
+            <p className="mt-2.5 text-sm text-muted-foreground">
+              {mode === "login"
+                ? "Sign in to reach your documents and saved chats."
+                : "Start indexing your study material in a couple of minutes."}
+            </p>
 
-          <form className="mt-5 space-y-3.5" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-foreground">
-                Email
-              </label>
-              <div className="relative">
-                <Mail
-                  className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  disabled={busy}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
-                  className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none disabled:opacity-60"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="mb-1.5 block text-sm font-medium text-foreground"
-              >
-                Password
-              </label>
-              <div className="relative">
-                <Lock
-                  className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden="true"
-                />
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
-                  required
-                  value={password}
-                  disabled={busy}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder={mode === "signup" ? "8+ characters, with a number" : "Your password"}
-                  className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none disabled:opacity-60"
-                />
-              </div>
-            </div>
-
-            {mode === "signup" && (
-              <div>
-                <label
-                  htmlFor="confirm"
-                  className="mb-1.5 block text-sm font-medium text-foreground"
+            <div
+              role="tablist"
+              aria-label="Authentication mode"
+              className="mt-6 grid grid-cols-2 gap-1 rounded-control border-2 border-border-strong bg-surface-sunk p-1"
+            >
+              {["login", "signup"].map((value) => (
+                <button
+                  key={value}
+                  role="tab"
+                  type="button"
+                  aria-selected={mode === value}
+                  onClick={() => {
+                    setMode(value);
+                    setError(null);
+                  }}
+                  className={cn(
+                    "min-h-11 rounded-[6px] px-3 text-sm font-semibold transition-colors duration-150",
+                    mode === value
+                      ? "bg-ink text-bone shadow-hs-sm dark:bg-bone dark:text-ink"
+                      : "text-muted-foreground hover:bg-surface hover:text-foreground"
+                  )}
                 >
-                  Confirm password
+                  {value === "login" ? "Sign in" : "Sign up"}
+                </button>
+              ))}
+            </div>
+
+            <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+              <div>
+                <label htmlFor="email" className={LABEL}>
+                  Email
                 </label>
-                <input
-                  id="confirm"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  value={confirm}
-                  disabled={busy}
-                  onChange={(event) => setConfirm(event.target.value)}
-                  className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground focus:border-primary focus:outline-none disabled:opacity-60"
-                />
+                <div className="relative">
+                  <Mail
+                    className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    disabled={busy}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="you@example.com"
+                    className={cn(INPUT, "pl-10")}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="password" className={LABEL}>
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock
+                    className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <input
+                    id="password"
+                    type="password"
+                    autoComplete={mode === "login" ? "current-password" : "new-password"}
+                    required
+                    value={password}
+                    disabled={busy}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder={mode === "signup" ? "8+ characters, with a number" : "Your password"}
+                    className={cn(INPUT, "pl-10")}
+                  />
+                </div>
+              </div>
+
+              {mode === "signup" && (
+                <div>
+                  <label htmlFor="confirm" className={LABEL}>
+                    Confirm password
+                  </label>
+                  <input
+                    id="confirm"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={confirm}
+                    disabled={busy}
+                    onChange={(event) => setConfirm(event.target.value)}
+                    className={INPUT}
+                  />
+                </div>
+              )}
+
+              {error && <ErrorState title="Could not sign you in" message={error} />}
+
+              <Button type="submit" size="lg" className="w-full" loading={busy}>
+                {copy.cta}
+                {!busy && <ArrowRight aria-hidden="true" />}
+              </Button>
+            </form>
+
+            {GOOGLE_CLIENT_ID && (
+              <div className="mt-6">
+                <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  or
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <div className="mt-4 flex justify-center overflow-hidden">
+                  <GoogleLogin
+                    onSuccess={(response) => handleGoogle(response.credential)}
+                    onError={() => setError("Google sign-in was cancelled.")}
+                    useOneTap={false}
+                    text="continue_with"
+                    shape="rectangular"
+                    width="320"
+                  />
+                </div>
               </div>
             )}
 
-            {error && <ErrorState title="Could not sign you in" message={error} />}
-
-            <Button type="submit" className="w-full" loading={busy}>
-              {copy.cta}
-              {!busy && <ArrowRight aria-hidden="true" />}
-            </Button>
-          </form>
-
-          {GOOGLE_CLIENT_ID && (
-            <div className="mt-5">
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="h-px flex-1 bg-border" />
-                or
-                <span className="h-px flex-1 bg-border" />
-              </div>
-              <div className="mt-4 flex justify-center">
-                <GoogleLogin
-                  onSuccess={(response) => handleGoogle(response.credential)}
-                  onError={() => setError("Google sign-in was cancelled.")}
-                  useOneTap={false}
-                  text="continue_with"
-                  shape="rectangular"
-                  width="320"
-                />
-              </div>
-            </div>
-          )}
-
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {copy.alt}{" "}
-            <button
-              type="button"
-              onClick={() => {
-                setMode(mode === "login" ? "signup" : "login");
-                setError(null);
-              }}
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              {copy.altCta}
-            </button>
-          </p>
+            <p className="mt-6 flex flex-wrap items-center justify-center gap-x-1.5 border-t border-border pt-3 text-sm text-muted-foreground">
+              {copy.alt}{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode(mode === "login" ? "signup" : "login");
+                  setError(null);
+                }}
+                className="inline-flex min-h-11 items-center rounded-sm px-1 font-semibold text-primary underline decoration-2 underline-offset-4 hover:decoration-citron"
+              >
+                {copy.altCta}
+              </button>
+            </p>
+          </div>
+          <span
+            aria-hidden="true"
+            className="absolute -right-2 -top-4 rotate-6 rounded-full border-2 border-black bg-citron px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-citron-foreground shadow-hs-sm"
+          >
+            {mode === "login" ? "welcome back" : "new here"}
+          </span>
         </div>
+
+        <ul className="mx-auto mt-10 w-full max-w-[26rem] space-y-2.5 lg:hidden">
+          {HIGHLIGHTS.map(({ icon: Icon, text }) => (
+            <li key={text} className="flex items-start gap-3 hairline-t pt-2.5 text-sm text-muted-foreground">
+              <Icon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+              {text}
+            </li>
+          ))}
+        </ul>
       </main>
     </div>
   );
 }
+

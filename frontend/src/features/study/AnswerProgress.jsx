@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { detailFor } from "./stageText";
 import { STAGES } from "./useAnswerStream";
 
 function ElapsedTime({ startedAt }) {
@@ -18,67 +19,57 @@ function ElapsedTime({ startedAt }) {
 
   if (seconds < 4) return null;
   return (
-    <span className="tabular text-xs text-muted-foreground">{seconds}s</span>
+    <span className="tabular font-mono text-[11px] text-muted-foreground">{seconds}s</span>
   );
 }
 
-function StageRow({ stage, status, detail, reduced }) {
+function StageRow({ stage, index, status, detail, reduced }) {
   const isDone = status === "done";
   const isActive = status === "active";
 
   return (
     <motion.li
       layout={!reduced}
-      initial={reduced ? false : { opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
-      className="flex items-start gap-2.5"
+      initial={reduced ? false : { opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      className="relative flex items-start gap-3 py-2"
     >
-      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-        {isDone ? (
-          <Check className="size-3.5 text-success" aria-hidden="true" />
-        ) : (
-          <Loader2
-            className={cn("size-3.5 text-primary", !reduced && "animate-spin")}
-            aria-hidden="true"
-          />
+      <span
+        className={cn(
+          "relative z-10 mt-px flex size-5 shrink-0 items-center justify-center rounded-full border-2 font-mono text-[9px] font-semibold",
+          isDone && "border-border-strong bg-success text-success-foreground",
+          isActive && "border-border-strong bg-primary text-primary-foreground",
+          !isDone && !isActive && "border-border bg-surface text-muted-foreground"
+        )}
+        aria-hidden="true"
+      >
+        {isDone ? <Check className="size-3" strokeWidth={3} /> : String(index + 1)}
+        {isActive && !reduced && (
+          <span className="absolute inset-[-5px] animate-ping rounded-full border-2 border-primary/50" />
         )}
       </span>
 
       <span className="min-w-0">
         <span
           className={cn(
-            "text-sm",
-            isDone ? "text-muted-foreground" : "font-medium text-foreground"
+            "block text-[13px] leading-snug",
+            isDone ? "text-muted-foreground line-through decoration-border" : "font-semibold text-foreground"
           )}
         >
           {stage.label}
         </span>
         {isActive && detail && (
-          <span className="mt-0.5 block text-xs text-muted-foreground">{detail}</span>
+          <span
+            className="mt-1 line-clamp-2 font-mono text-[11px] leading-relaxed text-muted-foreground [overflow-wrap:anywhere]"
+            title={typeof detail === "string" ? detail : undefined}
+          >
+            {detail}
+          </span>
         )}
       </span>
     </motion.li>
   );
-}
-
-function detailFor(stageId, detail) {
-  if (stageId === "retrieving" && detail.documentCount) {
-    const count = detail.documentCount;
-    const noun = count === 1 ? "document" : "documents";
-    return detail.scope === "selected"
-      ? `Searching ${count} selected ${noun}`
-      : `Searching ${count} ${noun}`;
-  }
-  if (stageId === "generating" && detail.passageCount) {
-    const count = detail.passageCount;
-    const passages = count === 1 ? "passage" : "passages";
-    const from = detail.documents?.length
-      ? ` from ${detail.documents.join(", ")}`
-      : "";
-    return `Found ${count} relevant ${passages}${from}`;
-  }
-  return null;
 }
 
 export default function AnswerProgress({
@@ -87,6 +78,7 @@ export default function AnswerProgress({
   detail = {},
   startedAt,
   onCancel,
+  className,
 }) {
   const reduced = useReducedMotion();
   const activeIndex = STAGES.findIndex((stage) => stage.id === activeStage);
@@ -99,35 +91,37 @@ export default function AnswerProgress({
       animate={{ opacity: 1, y: 0 }}
       exit={reduced ? undefined : { opacity: 0 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="rounded-lg border border-border bg-surface p-4"
+      className={cn("min-w-0", className)}
       aria-hidden="true"
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Generating
-        </span>
-        <div className="flex items-center gap-2">
-          {startedAt && <ElapsedTime startedAt={startedAt} />}
-          {onCancel && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onCancel}
-              aria-label="Stop generating"
-              title="Stop generating"
-            >
-              <X />
-            </Button>
-          )}
-        </div>
+      <div className="mb-1 flex items-center gap-2">
+        <span className="eyebrow text-foreground">Stage ledger</span>
+        <span aria-hidden="true" className="h-px flex-1 bg-border" />
+        {startedAt && <ElapsedTime startedAt={startedAt} />}
+        {onCancel && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onCancel}
+            aria-label="Stop generating"
+            title="Stop generating"
+          >
+            <X />
+          </Button>
+        )}
       </div>
 
-      <ul className="space-y-2.5">
+      <ul className="relative">
+        <span
+          aria-hidden="true"
+          className="absolute bottom-4 left-[9px] top-4 w-px border-l border-dashed border-border-strong/40"
+        />
         <AnimatePresence initial={false}>
           {visible.map((stage, index) => (
             <StageRow
               key={stage.id}
               stage={stage}
+              index={index}
               status={index < activeIndex || activeIndex === -1 ? "done" : "active"}
               detail={detailFor(stage.id, detail)}
               reduced={reduced}

@@ -1,0 +1,79 @@
+.mm-flow .react-flow__panel {
+  margin: 12px;
+}
+
+.mm-flow .react-flow__controls {
+  overflow: hidden;
+  border: 2px solid hsl(var(--border-strong));
+  border-radius: 10px;
+  background: hsl(var(--surface-raised));
+  box-shadow: var(--hs-sm);
+}
+
+.mm-flow .react-flow__controls-button {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: hsl(var(--surface-raised));
+  color: hsl(var(--foreground));
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.mm-flow .react-flow__controls-button + .react-flow__controls-button {
+  border-left: 2px solid hsl(var(--border-strong));
+}
+
+.mm-flow .react-flow__controls-button:hover {
+  background: hsl(var(--citron));
+  color: hsl(var(--citron-foreground));
+}
+
+.mm-flow .react-flow__controls-button svg {
+  max-width: 13px;
+  max-height: 13px;
+  fill: currentColor;
+}
+
+.mm-flow .react-flow__minimap {
+  overflow: hidden;
+  margin-bottom: 64px;
+  border: 2px solid hsl(var(--border-strong));
+  border-radius: 10px;
+  box-shadow: var(--hs-sm);
+}
+
+.mm-flow .react-flow__minimap svg {
+  display: block;
+}
+
+@media (pointer: coarse) {
+  .mm-flow .react-flow__controls-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 767px) {
+  .mm-flow .react-flow__minimap {
+    display: none;
+  }
+}
+
+.mm-frame {
+  container-type: size;
+}
+
+@container (max-width: 720px) {
+  .mm-flow .react-flow__minimap {
+    display: none;
+  }
+}
+
+@container (max-height: 480px) {
+  .mm-flow .react-flow__minimap {
+    display: none;
+  }
+}
