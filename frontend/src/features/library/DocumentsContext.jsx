@@ -89,6 +89,19 @@ export function DocumentsProvider({ children }) {
     else setDocuments([]);
   }, [isAuthenticated, user?.sub, refresh]);
 
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh({ quiet: true });
+    };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [isAuthenticated, refresh]);
+
   const upload = useCallback(
     async (file) => {
       const invalid = validateFile(file);

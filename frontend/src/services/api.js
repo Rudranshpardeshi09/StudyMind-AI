@@ -33,9 +33,17 @@ export function validateFile(file) {
 export const documentsApi = {
   list: () => http.get("/ingest/documents").then((r) => r.data.documents ?? []),
 
-  upload: (file, onProgress) => {
+  upload: async (file, onProgress) => {
+    let payload;
+    try {
+      payload = new File([await file.arrayBuffer()], file.name, { type: file.type });
+    } catch {
+      throw new Error(
+        "Couldn't read this file. If it's in Google Drive, download it to your device first, then choose it from Downloads."
+      );
+    }
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", payload);
     return http
       .post("/ingest/", form, {
         headers: { "Content-Type": "multipart/form-data" },
